@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "nonebot-plugin-savepic"
+version = "0.1.0"
+description = "保存表情包（语录）与随机出图"
+authors = ["Yan <1964649083@qq.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "nonebot_plugin_savepic"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+nonebot2 = "^2.0.1"
+nonebot-plugin-datastore = "^1.1.0"
+asyncpg = "^0.28.0"
+nonebot-adapter-onebot = "^2.2.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
