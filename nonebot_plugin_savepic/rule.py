@@ -4,8 +4,8 @@ This module is used to define the permission of the bot.
 
 import nonebot
 from nonebot.adapters import Bot, Event
-from nonebot_plugin_datastore import get_plugin_data
 from nonebot.internal.permission import Permission
+
 from .config import Config
 
 global_config = nonebot.get_driver().config
