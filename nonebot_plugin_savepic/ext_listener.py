@@ -1,25 +1,17 @@
-from nonebot import on_message
+from nonebot.plugin import on_endswith
 from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.internal.adapter.bot import Bot
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 
-from .pic_sql import load_pic, select_pic
+from .pic_sql import select_pic
+from .picture import load_pic
 
-
-async def endswith_pic(event: MessageEvent):
-    text = event.message.extract_plain_text().strip()
-    if " " in text:
-        return False
-    return text.endswith((".jpg", ".png", ".gif"))
-
-
-pic_listen = on_message(rule=endswith_pic)
-
+pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
 
 @pic_listen.handle()
 async def _(bot: Bot, event: MessageEvent):
-    name = event.message.extract_plain_text().strip()
+    name = event.get_plaintext().strip()
     group_id = (
         "globe"
         if not isinstance(event, GroupMessageEvent)

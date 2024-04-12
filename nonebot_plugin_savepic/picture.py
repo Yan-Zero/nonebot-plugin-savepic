@@ -1,11 +1,15 @@
-import scipy.fftpack as fft
-import numpy as np
+import nonebot
 import httpx
+import hashlib
 import os
 from PIL import Image
-from io import BytesIO
+from .model import EmoSame
+from .config import Config
 
+_emo_same = None
 _httpx_async = None
+gdriver = nonebot.get_driver()
+plugin_config = Config.parse_obj(gdriver.config)
 
 
 def remove_alpha(im: Image) -> Image:
@@ -25,6 +29,13 @@ def remove_alpha(im: Image) -> Image:
         return im
 
 
+def del_pic(url: str):
+    if url.startswith("http"):
+        return
+    if os.path.exists(url):
+        os.remove(url)
+
+
 async def load_pic(url: str) -> bytes:
     global _httpx_async
     if url.startswith("http"):
@@ -36,13 +47,32 @@ async def load_pic(url: str) -> bytes:
     if os.path.exists(url):
         with open(url, "rb") as f:
             return f.read()
-    raise Exception("不支持的 URL")
+    raise Exception(f"不支持的 URL\n{url}")
 
 
-def p_hash(img: bytes) -> bytes:
-    pic = remove_alpha(
-        Image.open(BytesIO(img)).resize((128, 128), Image.Resampling.LANCZOS)
-    ).convert("L")
-    dct = fft.dct(np.array(pic))
-    average = np.median(dct)
-    return np.packbits(dct[:16, :16] > average).tobytes()
+async def write_pic(url: str, des_dir: str = None) -> str:
+    if not des_dir:
+        des_dir = "savepic"
+    if not os.path.exists(des_dir):
+        os.makedirs(des_dir)
+
+    byte = await load_pic(url)
+    filename = hashlib.sha256(byte).hexdigest()
+    while os.path.exists(os.path.join(des_dir, filename)):
+        filename += "_"
+    with open(os.path.join(des_dir, filename), "wb") as f:
+        f.write(byte)
+    return os.path.join(des_dir, filename)
+
+
+@gdriver.on_startup
+async def _():
+    global _emo_same, plugin_config
+    if not plugin_config.simpic_enable: # AI 相似度判断
+        return
+    if not _emo_same:
+        _emo_same = EmoSame(plugin_config.p_model_path, plugin_config.q_model_path)
+
+
+def img2vec(img: bytes) -> list:
+    return _emo_same.quantify_tolist(img)

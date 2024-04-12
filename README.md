@@ -22,9 +22,26 @@ _✨ 一个存取图片的插件 ✨_
 
 抽取表情包
 
+### mvpic
+
+重命名表情包，或者修改表情包所属的群域
+
+例如：
+```
+/mvpic -l name.jpg -g waaaaa.gif
+```
+就是把本群的 name.jpg 改成全局名为 waaaaa.gif 的表情包
+
+同理
+```
+/mvpic -g waaaaa.gif -l waaaaa.gif
+```
+就是从全局移到本群（接收到命令的群）
+
 ### 直接发送文件名
 
 发送文件名即可发送表情包
+
 
 ## 💿 安装
 
@@ -75,10 +92,17 @@ _✨ 一个存取图片的插件 ✨_
 |:-----:|:----:|:----:|:----:|
 | savepic_admin | 否 | 无 | 权限用户 |
 | savepic_dir | 否 | savepic | 图片本地保存位置 |
+| simpic_enable | 否 | False | 是否开启基于RNN模型的AI相似度检索功能，如果开启要填写 Pinecone 相关配置 |
+| pinecone_apikey | 否 | 无 | pinecone 的 Key |
+| pinecone_environment | 否 | 无 | pinecone 的 enviroment，是数据库的属性之一 |
+| pinecone_index | 否 | savepic | 同上。 |
+| dashscope_api | 否 | 无 | dashscope 的 APIKey。 用于开启基于语义的相似度检索功能 |
 
 ## 🎉 使用
 ### 指令表
 | 指令 | 权限 | 需要@ | 范围 | 说明 |
 |:-----:|:----:|:----:|:----:|:----:|
-| savepic | 群员 | 是 | 群聊 | 保存图片 |
-| randpic | 群员 | 是 | 全部 | 随机图片 |
+| savepic | 群员 | 否 | 群聊 | 保存图片 |
+| randpic | 群员 | 否 | 全部 | 随机图片 |
+| mvpic | 管理员 | 否 | 群聊 | 重命名图片 |
+
