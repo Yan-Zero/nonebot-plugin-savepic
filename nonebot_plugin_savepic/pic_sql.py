@@ -358,6 +358,8 @@ async def init_db():
         print(ex)
 
     if p_config.pinecone_apikey:
+        if not p_config.simpic_enable:
+            raise Exception("呃啊，配置了 pinecone 就要开启simpic，因为这是绑定的")
         if not p_config.pinecone_environment:
             raise Exception("请配置 pinecone_environment")
         pinecone.init(

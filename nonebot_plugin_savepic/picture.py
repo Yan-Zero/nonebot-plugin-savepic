@@ -75,4 +75,6 @@ async def _():
 
 
 def img2vec(img: bytes) -> list:
+    if not _emo_same:
+        return None
     return _emo_same.quantify_tolist(img)

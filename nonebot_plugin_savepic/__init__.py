@@ -426,6 +426,8 @@ async def _(
 
 @s_simpic.handle()
 async def _(bot: Bot, event: MessageEvent, args: V11Msg = CommandArg()):
+    if not p_config.simpic_enable:
+        await s_simpic.finish("simpic 并未开启喵。")
     picture = event.reply.message.get("image") if event.reply else None
     if not picture:
         await s_simpic.finish(
