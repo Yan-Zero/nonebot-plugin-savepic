@@ -15,7 +15,6 @@ from sqlalchemy.exc import DBAPIError
 from arclet.alconna import Alconna, Option, Args, CommandMeta, append
 import os
 import random
-import traceback
 import json
 from typing import (
     Any,
@@ -57,7 +56,10 @@ from .pic_sql import (  # noqa: E402
 )
 from .rule import PIC_AMDIN, BLACK_GROUP
 from .ext_listener import pic_listen  # noqa: E402, F401
-from .picture import img2vec, write_pic, load_pic  # noqa: E402
+from .picture import write_pic, load_pic  # noqa: E402
+from .ai_utils import img2vec
+from .randpic import rpic
+from .countpic import cpic
 
 
 def url_to_image(url: str):
@@ -276,7 +278,7 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         await savepic(
             state["savepiv_filename"],
             dir,
-            img2vec(await load_pic(dir)),
+            img2vec(await load_pic(dir), state["savepiv_filename"]),
             state["savepiv_group"],
             state["savepiv_ac"],
         )

@@ -3,32 +3,9 @@ from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from sqlalchemy.exc import DBAPIError
 from .rule import BLACK_GROUP
-from .pic_sql import _async_database
-from .pic_sql import select
-from .pic_sql import AsyncSession
-from .pic_sql import sa
-from .model import PicData
-
+from .pic_sql import countpic
 
 cpic = on_command("countpic", priority=5, permission=BLACK_GROUP)
-
-
-async def countpic(reg: str, group: str = "globe") -> int:
-    reg = reg.strip()
-    if not reg:
-        reg = ".*"
-    async with AsyncSession(_async_database) as db_session:
-        pics = await db_session.scalar(
-            select(sa.func.count()).select_from(
-                select(PicData)
-                .where(sa.or_(PicData.group == group, PicData.group == "globe"))
-                .where(PicData.name != "")
-                .where(PicData.name.regexp_match(reg, flags="i"))
-            )
-        )
-        if pics:
-            return pics
-        return 0
 
 
 @cpic.handle()

@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
 import asyncpg
 from nonebot import get_driver
-import pinecone
 import dashscope
 import pathlib
+from pinecone import Pinecone, ServerlessSpec
 
 from .model import PicData
 from .picture import del_pic
@@ -38,6 +38,7 @@ async def select_pic(filename: str, group: str):
             .where(PicData.group == group)
         )
         if pic:
+            await update_vec(pic)
             return pic
         return await db_session.scalar(
             select(PicData)
@@ -192,8 +193,75 @@ async def regexp_pic(reg: str, group: str = "globe") -> PicData:
             return pic
 
 
+async def randpic(
+    name: str, group: str = "globe", vector: bool = False
+) -> tuple[PicData, str]:
+    name = name.strip().replace("%", r"\%").replace("_", r"\_")
+
+    async with AsyncSession(_async_database) as db_session:
+        if not name:
+            return (
+                await db_session.scalar(
+                    select(PicData)
+                    .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+                    .where(PicData.name != "")
+                    .order_by(sa.func.random())
+                ),
+                "",
+            )
+
+        if pic := await db_session.scalar(
+            select(PicData)
+            .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+            .where(PicData.name.ilike(f"%{name}%"))
+            .order_by(sa.func.random())
+        ):
+            await update_vec(pic)
+            return pic, ""
+        if not vector:
+            return None, ""
+
+        datas = await _async_embedding_database.fetch(
+            (
+                "SELECT id FROM savepic_word2vec "
+                "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
+                "ORDER BY embedding <#> $1 LIMIT 8;"
+            ),
+            str(word2vec(name)),
+        )
+        if pic := await db_session.scalar(
+            select(PicData)
+            .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+            .where(PicData.id.in_([i["id"] for i in datas]))
+            .where(PicData.name != "")
+            .order_by(sa.func.random())
+        ):
+            return pic, "（语义向量相似度检索）"
+        return None, False
+
+
+async def countpic(reg: str, group: str = "globe") -> int:
+    reg = reg.strip()
+    if not reg:
+        reg = ".*"
+    async with AsyncSession(_async_database) as db_session:
+        pics = await db_session.scalar(
+            select(sa.func.count()).select_from(
+                select(PicData)
+                .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+                .where(PicData.name != "")
+                .where(PicData.name.regexp_match(reg, flags="i"))
+            )
+        )
+        if pics:
+            return pics
+        return 0
+
+
 async def update_vec(pic: PicData):
     if not pic:
+        return
+    if not pic.u_vec_text and not pic.u_vec_img:
         return
     if pic.u_vec_text:
         pic.u_vec_text = False
@@ -287,13 +355,16 @@ async def init_db():
     if not p_config.pinecone_environment:
         raise Exception("请配置 pinecone_environment")
 
-    pinecone.init(
-        api_key=p_config.pinecone_apikey, environment=p_config.pinecone_environment
-    )
-    if p_config.pinecone_index not in pinecone.list_indexes():
-        pinecone.create_index(p_config.pinecone_index, dimension=384)
+    pc = Pinecone(api_key=p_config.pinecone_apikey)
+    if p_config.pinecone_index not in pc.list_indexes().names():
+        pc.create_index(
+            name=p_config.pinecone_index,
+            dimension=1536,
+            metric="euclidean",
+            spec=ServerlessSpec(cloud="aws", region="us-west-2"),
+        )
     if not _pincone_index:
-        _pincone_index = pinecone.Index(p_config.pinecone_index)
+        _pincone_index = pc.Index(p_config.pinecone_index)
 
 
 @gdriver.on_startup

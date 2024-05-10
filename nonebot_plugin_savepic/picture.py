@@ -3,8 +3,10 @@ import httpx
 import hashlib
 import os
 from PIL import Image
-from .model import EmoSame
 from .config import Config
+
+if False:
+    from .model import EmoSame
 
 _emo_same = None
 _httpx_async = None
@@ -70,5 +72,6 @@ async def _():
     global _emo_same, plugin_config
     if not plugin_config.simpic_enable:  # AI 相似度判断
         return
-    if not _emo_same:
-        _emo_same = EmoSame(plugin_config.p_model_path, plugin_config.q_model_path)
+
+    # if not _emo_same:
+    #     _emo_same = EmoSame(plugin_config.p_model_path, plugin_config.q_model_path)
