@@ -68,13 +68,7 @@ async def write_pic(url: str, des_dir: str = None) -> str:
 @gdriver.on_startup
 async def _():
     global _emo_same, plugin_config
-    if not plugin_config.simpic_enable: # AI 相似度判断
+    if not plugin_config.simpic_enable:  # AI 相似度判断
         return
     if not _emo_same:
         _emo_same = EmoSame(plugin_config.p_model_path, plugin_config.q_model_path)
-
-
-def img2vec(img: bytes) -> list:
-    if not _emo_same:
-        return None
-    return _emo_same.quantify_tolist(img)

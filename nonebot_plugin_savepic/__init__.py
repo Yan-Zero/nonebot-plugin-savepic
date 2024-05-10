@@ -1,6 +1,6 @@
 from pathlib import Path
 from nonebot import require
-from nonebot import get_driver
+from nonebot import get_plugin_config
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
@@ -54,10 +54,8 @@ from .pic_sql import (  # noqa: E402
     regexp_pic,
     get_most_similar_pic,
     listpic,
-    randpic,
-    countpic,
 )
-from .rule import PIC_AMDIN, BLACK_GROUP  # noqa: E402
+from .rule import PIC_AMDIN, BLACK_GROUP
 from .ext_listener import pic_listen  # noqa: E402, F401
 from .picture import img2vec, write_pic, load_pic  # noqa: E402
 
@@ -92,11 +90,9 @@ __plugin_meta__ = PluginMetadata(
 )
 INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 
-p_config = Config.parse_obj(get_driver().config)
+p_config = get_plugin_config(Config)
 repic = on_command("repic", priority=5, permission=BLACK_GROUP)
-rpic = on_command("randpic", priority=5, permission=BLACK_GROUP)
 spic = on_command("savepic", priority=5, permission=BLACK_GROUP)
-cpic = on_command("countpic", priority=5, permission=BLACK_GROUP)
 a_spic = Alconna(
     "/savepic",
     Option("-d", help_text="删除图片"),
@@ -162,56 +158,6 @@ def got_random_prompt(
         return func
 
     return _decorator
-
-
-@cpic.handle()
-async def _(bot: Bot, event, args: V11Msg = CommandArg()):
-    reg = args.extract_plain_text().strip()
-    group_id = (
-        "globe"
-        if not isinstance(event, GroupMessageEvent)
-        else f"qq_group:{event.group_id}"
-    )
-    try:
-        await bot.send(event, f"共查找到 {await countpic(reg, group_id)} 张图片。")
-    except DBAPIError as ex:
-        await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
-        )
-    except Exception as ex:
-        await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
-
-
-@rpic.handle()
-async def _(bot: Bot, event, args: V11Msg = CommandArg()):
-    name = args.extract_plain_text().strip()
-    group_id = (
-        "globe"
-        if not isinstance(event, GroupMessageEvent)
-        else f"qq_group:{event.group_id}"
-    )
-    try:
-        pic, t = await randpic(name, group_id, True)
-        if not pic:
-            await rpic.send(random.choice(words.get("not found", ["Nope."])))
-            return
-        await bot.send(
-            event,
-            V11Msg(
-                [
-                    pic.name,
-                    "\n" + t if t else "",
-                    url_to_image(pic.url),
-                ]
-            ),
-        )
-    except Exception as ex:
-        with open("error.txt", "w+") as f:
-            f.write("\n")
-            traceback.print_exc(file=f)
-        await rpic.finish(str(ex))
 
 
 @repic.handle()

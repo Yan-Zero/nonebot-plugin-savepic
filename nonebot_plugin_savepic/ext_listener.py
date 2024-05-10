@@ -3,11 +3,11 @@ from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.internal.adapter.bot import Bot
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
-
 from .pic_sql import select_pic
 from .picture import load_pic
 
 pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
+
 
 @pic_listen.handle()
 async def _(bot: Bot, event: MessageEvent):

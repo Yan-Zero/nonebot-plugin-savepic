@@ -4,14 +4,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
 import asyncpg
 from nonebot import get_driver
-import dashscope
-from dashscope import TextEmbedding
 import pinecone
-
-from http import HTTPStatus
+import dashscope
+import pathlib
 
 from .model import PicData
 from .picture import del_pic
+from .ai_utils import word2vec
+from .ai_utils import file2vec
 from .config import Config
 from .error import SameNameException
 from .error import SimilarPictureException
@@ -23,21 +23,11 @@ _async_database = None
 _pincone_index = None
 _async_embedding_database = None
 
+
 def AsyncDatabase():
     if not _async_database:
         raise RuntimeError("Database is not initialized")
     return _async_database
-
-def word2vec(word: str) -> list[float]:
-    if not p_config.dashscope_api:
-        raise KeyError("Hmmm, 没有填写 dashscope 的 apikey")
-    
-    resp = TextEmbedding.call(
-        model=TextEmbedding.Models.text_embedding_v1, input=word, text_type="query"
-    )
-    if resp.status_code != HTTPStatus.OK:
-        raise RuntimeError("Dashscope API Error")
-    return resp.output["embeddings"][0]["embedding"]
 
 
 async def select_pic(filename: str, group: str):
@@ -62,9 +52,6 @@ async def get_most_similar_pic(
     ignore_diagonal: bool = False,
     ignore_min: bool = False,
 ) -> tuple[float, PicData]:
-    if not p_config.pinecone_apikey:
-        raise KeyError("Pinecone APIKey 未填写")
-
     async with AsyncSession(_async_database) as db_session:
         ret = _pincone_index.query(img_vec, top_k=20)["matches"]
         if not ret:
@@ -98,9 +85,7 @@ async def savepic(
     collision_allow: bool = False,
 ):
     pic = PicData(
-        group=group_id,
-        name=filename,
-        url=url,
+        group=group_id, name=filename, url=url, u_vec_img=False, u_vec_text=False
     )
     async with AsyncSession(_async_database) as db_session:
         despic = await db_session.scalar(
@@ -110,8 +95,8 @@ async def savepic(
         )
         if despic:
             raise SameNameException(despic.name)
-        
-        if p_config.pinecone_apikey and not collision_allow:
+
+        if not collision_allow:
             ret = _pincone_index.query(img_vec, top_k=25)["matches"]
             for i in ret:
                 if i["score"] and i["score"] < 0.98:
@@ -132,18 +117,15 @@ async def savepic(
             db_session.add(pic)
         await db_session.flush()
 
-        if _pincone_index:
-            _pincone_index.upsert([(str(pic.id), img_vec)])
-        
-        if p_config.dashscope_api:
-            await _async_embedding_database.execute(
-                (
-                    "INSERT INTO savepic_word2vec (id, embedding) VALUES ($1, $2) "
-                    "ON CONFLICT (id) DO UPDATE SET embedding = $2"
-                ),
-                pic.id,
-                str(word2vec(filename)),
-            )
+        _pincone_index.upsert([(str(pic.id), img_vec)])
+        await _async_embedding_database.execute(
+            (
+                "INSERT INTO savepic_word2vec (id, embedding) VALUES ($1, $2) "
+                "ON CONFLICT (id) DO UPDATE SET embedding = $2"
+            ),
+            pic.id,
+            str(word2vec(filename)),
+        )
         await db_session.commit()
 
 
@@ -165,6 +147,7 @@ async def rename(ori: str, des: str, s_group: str, d_group: str):
         pic.name = des
         pic.group = d_group
 
+        pic.u_vec_text = False
         await _async_embedding_database.execute(
             "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
             str(word2vec(des)),
@@ -186,66 +169,14 @@ async def delete(filename: str, group: str):
         del_pic(pic.url)
         pic.name = ""
         await db_session.merge(pic)
-        if _pincone_index:
-            _pincone_index.delete(ids=[str(pic.id)])
-        if p_config.dashscope_api:
-            await _async_embedding_database.execute(
-                "UPDATE savepic_word2vec SET embedding = NULL WHERE id = $1", pic.id
-            )
+        _pincone_index.delete(ids=[str(pic.id)])
+        await _async_embedding_database.execute(
+            "UPDATE savepic_word2vec SET embedding = NULL WHERE id = $1", pic.id
+        )
         await db_session.commit()
 
 
-async def randpic(
-    name: str, group: str = "globe", vector: bool = False
-) -> tuple[PicData, str]:
-    name = name.strip().replace("%", r"\%").replace("_", r"\_")
-    async with AsyncSession(_async_database) as db_session:
-        if not name:
-            return (
-                await db_session.scalar(
-                    select(PicData)
-                    .where(sa.or_(PicData.group == group, PicData.group == "globe"))
-                    .where(PicData.name != "")
-                    .order_by(sa.func.random())
-                ),
-                "",
-            )
-
-        if pic := await db_session.scalar(
-            select(PicData)
-            .where(sa.or_(PicData.group == group, PicData.group == "globe"))
-            .where(PicData.name.ilike(f"%{name}%"))
-            .order_by(sa.func.random())
-        ):
-            return pic, ""
-        if not vector:
-            return None, ""
-        if not p_config.dashscope_api:
-            return None, False
-        
-        datas = await _async_embedding_database.fetch(
-            (
-                "SELECT id FROM savepic_word2vec "
-                "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
-                "ORDER BY embedding <#> $1 LIMIT 8;"
-            ),
-            str(word2vec(name)),
-        )
-        if pic := await db_session.scalar(
-            select(PicData)
-            .where(sa.or_(PicData.group == group, PicData.group == "globe"))
-            .where(PicData.id.in_([i["id"] for i in datas]))
-            .where(PicData.name != "")
-            .order_by(sa.func.random())
-        ):
-            return pic, "（语义向量相似度检索）"
-        return None, False
-
-
 async def regexp_pic(reg: str, group: str = "globe") -> PicData:
-    if "postgresql" not in p_config.savepic_sqlurl:
-        raise TypeError("正则匹配搜索只能 PGSQL，不如使用randpic（ilike匹配）")
-    
     reg = reg.strip()
     if not reg:
         reg = ".*"
@@ -261,40 +192,32 @@ async def regexp_pic(reg: str, group: str = "globe") -> PicData:
             return pic
 
 
-async def countpic(reg: str, group: str = "globe") -> int:
-    """ emmm, pgsql 之外的使用 ilike，兼容性并未测试。 """
-    reg = reg.strip()
+async def update_vec(pic: PicData):
+    if not pic:
+        return
+    if pic.u_vec_text:
+        pic.u_vec_text = False
+        await _async_embedding_database.execute(
+            "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
+            str(word2vec(pic.name)),
+            pic.id,
+        )
+    if pic.u_vec_img:
+        pic.u_vec_img = False
+        _pincone_index.upsert(
+            [(str(pic.id), file2vec(pathlib.Path(pic.url), pic.name))]
+        )
     async with AsyncSession(_async_database) as db_session:
-        sql = (select(PicData)
-            .where(sa.or_(PicData.group == group, PicData.group == "globe"))
-            .where(PicData.name != ""))
-        if "postgresql" in p_config.savepic_sqlurl:
-            if not reg:
-                reg = ".*"
-            pics = await db_session.scalar(
-                select(sa.func.count()).select_from(
-                    sql.where(PicData.name.regexp_match(reg, flags="i"))
-                )
-            )
-        else:
-            pics = await db_session.scalar(
-                select(sa.func.count()).select_from(
-                    sql.where(PicData.name.ilike(reg))
-                )
-            )
-        if pics:
-            return pics
-        return 0
+        db_session.merge(pic)
+        await db_session.flush()
+        db_session.commit()
 
 
 async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
-    pages -= 1
-    if pages < 0:
-        pages = 0
-    if "postgresql" not in p_config.savepic_sqlurl:
-        raise TypeError("正则匹配搜索只能 PGSQL")
-
     reg = reg.strip()
+    if not reg:
+        reg = ".*"
+    pages -= 1
     async with AsyncSession(_async_database) as db_session:
         pics = await db_session.scalars(
             select(PicData)
@@ -302,7 +225,7 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
             .where(PicData.name != "")
             .where(PicData.name.regexp_match(reg, flags="i"))
             .order_by(PicData.name)
-            .offset(pages * 10)
+            .offset((0 if pages < 0 else pages) * 10)
             .limit(10)
         )
         if pics:
@@ -315,31 +238,13 @@ async def init_db():
     _async_database = create_async_engine(
         p_config.savepic_sqlurl,
         future=True,
+        # connect_args={"statement_cache_size": 0},
     )
-
     if p_config.embedding_sqlurl.startswith("postgresql+asyncpg"):
         p_config.embedding_sqlurl = "postgresql" + p_config.embedding_sqlurl[18:]
-    if "postgresql" not in p_config.embedding_sqlurl:
-        raise TypeError("很抱歉，embedding sql 只支持 pgsql，或者，pr welcome。")
-    if p_config.embedding_sqlurl :
-        _async_embedding_database = await asyncpg.create_pool(p_config.embedding_sqlurl)
-        if not (
-            await _async_embedding_database.fetch(
-                (
-                    "SELECT EXISTS "
-                    "(SELECT FROM pg_tables "
-                    "WHERE tablename = 'savepic_word2vec');"
-                )
-            )
-        )[0]["exists"]:
-            await _async_embedding_database.execute(
-                (
-                    "CREATE TABLE savepic_word2vec (\n"
-                    "  id bigserial PRIMARY KEY, \n"
-                    "  embedding vector(1536)\n"
-                    ");"
-                )
-            )
+    _async_embedding_database = await asyncpg.create_pool(
+        p_config.embedding_sqlurl  # , statement_cache_size=0
+    )
     dashscope.api_key = p_config.dashscope_api
 
     try:
@@ -351,24 +256,44 @@ async def init_db():
             sa.Column("name", sa.TEXT, nullable=False),
             sa.Column("group", sa.TEXT, nullable=False),
             sa.Column("url", sa.TEXT, nullable=False),
+            sa.Column("u_vec_img", sa.BOOLEAN, nullable=False),
+            sa.Column("u_vec_text", sa.BOOLEAN, nullable=False),
         )
         async with _async_database.begin() as conn:
             await conn.run_sync(metadata.create_all)
     except Exception as ex:
         print(ex)
 
-    if p_config.pinecone_apikey:
-        if not p_config.simpic_enable:
-            raise Exception("呃啊，配置了 pinecone 就要开启simpic，因为这是绑定的")
-        if not p_config.pinecone_environment:
-            raise Exception("请配置 pinecone_environment")
-        pinecone.init(
-            api_key=p_config.pinecone_apikey, environment=p_config.pinecone_environment
+    if not (
+        await _async_embedding_database.fetch(
+            (
+                "SELECT EXISTS "
+                "(SELECT FROM pg_tables "
+                "WHERE tablename = 'savepic_word2vec');"
+            )
         )
-        if p_config.pinecone_index not in pinecone.list_indexes():
-            pinecone.create_index(p_config.pinecone_index, dimension=384)
-        if not _pincone_index:
-            _pincone_index = pinecone.Index(p_config.pinecone_index)
+    )[0]["exists"]:
+        await _async_embedding_database.execute(
+            (
+                "CREATE TABLE savepic_word2vec (\n"
+                "  id bigserial PRIMARY KEY, \n"
+                "  embedding vector(1536)\n"
+                ");"
+            )
+        )
+
+    if not p_config.pinecone_apikey:
+        raise Exception("请配置 pinecone_apikey")
+    if not p_config.pinecone_environment:
+        raise Exception("请配置 pinecone_environment")
+
+    pinecone.init(
+        api_key=p_config.pinecone_apikey, environment=p_config.pinecone_environment
+    )
+    if p_config.pinecone_index not in pinecone.list_indexes():
+        pinecone.create_index(p_config.pinecone_index, dimension=384)
+    if not _pincone_index:
+        _pincone_index = pinecone.Index(p_config.pinecone_index)
 
 
 @gdriver.on_startup
@@ -377,3 +302,25 @@ async def _():
         raise Exception("请配置 savepic_sqlurl")
 
     await init_db()
+    # if os.path.exists("savepic_picdata.json"):
+    #     print("加载附加数据")
+    #     with open("savepic_picdata.json", "r") as f:
+    #         files = json.load(f)
+    #     failed = []
+    #     for i in files:
+    #         url = os.path.join("savepic", i)
+    #         try:
+    #             async with AsyncSession(_async_database) as db_session:
+    #                 pic = await db_session.scalar(
+    #                     select(PicData)
+    #                     .where(PicData.url == url)
+    #                     .where(PicData.name != "")
+    #                 )
+    #                 if pic:
+    #                     _pincone_index.upsert([(str(pic.id), files[i])])
+    #                     print(f"{pic.name} 加载成功")
+    #         except Exception as ex:
+    #             print(ex)
+    #             failed.append(url)
+    #     os.remove("savepic_picdata.json")
+    #     print("向量数据加载完成")

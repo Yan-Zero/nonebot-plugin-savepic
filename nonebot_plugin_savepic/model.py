@@ -1,16 +1,13 @@
-import numpy as np
-from PIL import Image
 from io import BytesIO
-from nonebot import get_driver
-from nonebot_plugin_datastore import get_plugin_data
 from sqlalchemy import TEXT
+from sqlalchemy import BOOLEAN
 from sqlalchemy.orm import Mapped, mapped_column
-from .config import Config
+from nonebot_plugin_datastore import get_plugin_data
 
-p_config = Config.parse_obj(get_driver().config)
 plugin_data = get_plugin_data()
 plugin_data.use_global_registry()
 Model = plugin_data.Model
+
 
 class PicData(Model):
     """消息记录"""
@@ -26,11 +23,16 @@ class PicData(Model):
     """ 所属群组 id """
     url: Mapped[str] = mapped_column(TEXT)
     """ 图片目录 """
+    u_vec_img: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
+    u_vec_text: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
 
-if p_config.simpic_enable:
+
+if False:
     import torch
-    from networks.resnet_big import *
+    import numpy as np
+    from PIL import Image
     from torchvision import transforms
+    from networks.resnet_big import *
     from torch.quantization import get_default_qconfig
     from torch.quantization.quantize_fx import prepare_fx, convert_fx
 
@@ -45,7 +47,9 @@ if p_config.simpic_enable:
                 float_model.eval()
 
                 p_model = prepare_fx(
-                    float_model, qconfig_dict, example_inputs=torch.randn(1, 3, 224, 224)
+                    float_model,
+                    qconfig_dict,
+                    example_inputs=torch.randn(1, 3, 224, 224),
                 )
 
                 self.model = convert_fx(p_model)
@@ -57,7 +61,9 @@ if p_config.simpic_enable:
                     [
                         transforms.Resize((224, 224)),
                         transforms.ToTensor(),
-                        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.25, 0.25, 0.25)),
+                        transforms.Normalize(
+                            mean=(0.5, 0.5, 0.5), std=(0.25, 0.25, 0.25)
+                        ),
                     ]
                 )
             except Exception as e:
