@@ -40,6 +40,8 @@ def file2vec(path: pathlib.Path, title: str = None) -> list:
 
 def img2vec(img: bytes, title: str = None) -> list:
     """1536 D"""
+    return None
+
     if plugin_config.simpic_model.lower() == "one-peach":
         path = pathlib.Path(tempfile.gettempdir) / "img2vec"
         if not path.exists():

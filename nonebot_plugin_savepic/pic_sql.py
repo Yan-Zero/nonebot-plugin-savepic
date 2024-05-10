@@ -47,35 +47,35 @@ async def select_pic(filename: str, group: str):
         )
 
 
-async def get_most_similar_pic(
-    img_vec: list[float],
-    group_id: str,
-    ignore_diagonal: bool = False,
-    ignore_min: bool = False,
-) -> tuple[float, PicData]:
-    async with AsyncSession(_async_database) as db_session:
-        ret = _pincone_index.query(img_vec, top_k=20)["matches"]
-        if not ret:
-            return None, None
-        if not ret[0]["id"]:
-            return None, None
-        if ignore_diagonal and ret[0]["score"] >= 0.999:
-            ret.pop(0)
+# async def get_most_similar_pic(
+#     img_vec: list[float],
+#     group_id: str,
+#     ignore_diagonal: bool = False,
+#     ignore_min: bool = False,
+# ) -> tuple[float, PicData]:
+#     async with AsyncSession(_async_database) as db_session:
+#         ret = _pincone_index.query(img_vec, top_k=20)["matches"]
+#         if not ret:
+#             return None, None
+#         if not ret[0]["id"]:
+#             return None, None
+#         if ignore_diagonal and ret[0]["score"] >= 0.999:
+#             ret.pop(0)
 
-        for i in ret:
-            if i["score"] < 0.65 and not ignore_min:
-                return None, None
-            if i["id"]:
-                despic = await db_session.scalar(
-                    select(PicData)
-                    .where(PicData.id == int(i["id"]))
-                    .where(PicData.name != "")
-                    .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
-                )
-                if despic:
-                    return i["score"], despic
+#         for i in ret:
+#             if i["score"] < 0.65 and not ignore_min:
+#                 return None, None
+#             if i["id"]:
+#                 despic = await db_session.scalar(
+#                     select(PicData)
+#                     .where(PicData.id == int(i["id"]))
+#                     .where(PicData.name != "")
+#                     .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
+#                 )
+#                 if despic:
+#                     return i["score"], despic
 
-        return None, None
+#         return None, None
 
 
 async def savepic(
@@ -97,18 +97,18 @@ async def savepic(
         if despic:
             raise SameNameException(despic.name)
 
-        if not collision_allow:
-            ret = _pincone_index.query(img_vec, top_k=25)["matches"]
-            for i in ret:
-                if i["score"] and i["score"] < 0.98:
-                    break
-                despic = await db_session.scalar(
-                    select(PicData)
-                    .where(PicData.id == int(ret[0]["id"]))
-                    .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
-                )
-                if despic:
-                    raise SimilarPictureException(despic.name, i["score"], despic.url)
+        # if not collision_allow:
+        #     ret = _pincone_index.query(img_vec, top_k=25)["matches"]
+        #     for i in ret:
+        #         if i["score"] and i["score"] < 0.98:
+        #             break
+        #         despic = await db_session.scalar(
+        #             select(PicData)
+        #             .where(PicData.id == int(ret[0]["id"]))
+        #             .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
+        #         )
+        #         if despic:
+        #             raise SimilarPictureException(despic.name, i["score"], despic.url)
 
         empty = await db_session.scalar(select(PicData).where(PicData.name == ""))
         if empty:
@@ -118,7 +118,7 @@ async def savepic(
             db_session.add(pic)
         await db_session.flush()
 
-        _pincone_index.upsert([(str(pic.id), img_vec)])
+        # _pincone_index.upsert([(str(pic.id), img_vec)])
         await _async_embedding_database.execute(
             (
                 "INSERT INTO savepic_word2vec (id, embedding) VALUES ($1, $2) "
@@ -170,7 +170,7 @@ async def delete(filename: str, group: str):
         del_pic(pic.url)
         pic.name = ""
         await db_session.merge(pic)
-        _pincone_index.delete(ids=[str(pic.id)])
+        # _pincone_index.delete(ids=[str(pic.id)])
         await _async_embedding_database.execute(
             "UPDATE savepic_word2vec SET embedding = NULL WHERE id = $1", pic.id
         )
@@ -270,11 +270,11 @@ async def update_vec(pic: PicData):
             str(word2vec(pic.name)),
             pic.id,
         )
-    if pic.u_vec_img:
-        pic.u_vec_img = False
-        _pincone_index.upsert(
-            [(str(pic.id), file2vec(pathlib.Path(pic.url), pic.name))]
-        )
+    # if pic.u_vec_img:
+    #     pic.u_vec_img = False
+    #     _pincone_index.upsert(
+    #         [(str(pic.id), file2vec(pathlib.Path(pic.url), pic.name))]
+    #     )
     async with AsyncSession(_async_database) as db_session:
         db_session.merge(pic)
         await db_session.flush()
