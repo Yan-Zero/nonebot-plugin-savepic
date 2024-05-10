@@ -261,7 +261,7 @@ async def countpic(reg: str, group: str = "globe") -> int:
 async def update_vec(pic: PicData):
     if not pic:
         return
-    if not pic.u_vec_text and not pic.u_vec_img:
+    if not pic.u_vec_text:  # and not pic.u_vec_img:
         return
     if pic.u_vec_text:
         pic.u_vec_text = False

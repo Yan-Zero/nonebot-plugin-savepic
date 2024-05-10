@@ -51,7 +51,6 @@ from .pic_sql import (  # noqa: E402
     rename,
     delete,
     regexp_pic,
-    get_most_similar_pic,
     listpic,
 )
 from .rule import PIC_AMDIN, BLACK_GROUP
@@ -376,6 +375,7 @@ async def _(
 async def _(bot: Bot, event: MessageEvent, args: V11Msg = CommandArg()):
     if True:
         await s_simpic.finish("simpic 并未开启喵。")
+
     picture = event.reply.message.get("image") if event.reply else None
     if not picture:
         await s_simpic.finish(
