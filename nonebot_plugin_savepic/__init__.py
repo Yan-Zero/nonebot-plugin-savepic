@@ -5,7 +5,6 @@ from nonebot import on_command
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
-from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.matcher import Matcher
@@ -15,7 +14,6 @@ from sqlalchemy.exc import DBAPIError
 from arclet.alconna import Alconna, Option, Args, CommandMeta, append
 import os
 import random
-import json
 from typing import (
     Any,
     Union,
@@ -41,11 +39,11 @@ from nonebot.internal.adapter import (
 require("nonebot_plugin_datastore")
 
 from .error import (
-    NoPictureException,
     SimilarPictureException,
     SameNameException,
 )  # noqa: E402, E501
-from .config import Config  # noqa: E402
+from .config import Config
+from .config import WORDS
 from .pic_sql import (  # noqa: E402
     savepic,
     rename,
@@ -53,27 +51,16 @@ from .pic_sql import (  # noqa: E402
     regexp_pic,
     listpic,
 )
-from .rule import PIC_AMDIN, BLACK_GROUP
+from .rule import PIC_AMDIN
+from .rule import BLACK_GROUP
+from .rule import GROUP_ADMIN
 from .ext_listener import pic_listen  # noqa: E402, F401
 from .picture import write_pic, load_pic  # noqa: E402
 from .ai_utils import img2vec
-from .randpic import rpic
+from .randpic import url_to_image
 from .countpic import cpic
+from .mvpic import INVALID_FILENAME_CHARACTERS
 
-
-def url_to_image(url: str):
-    if url.startswith("http"):
-        return V11Seg.image(url)
-    return V11Seg.image(Path(url))
-
-
-words = {}
-for root, _, files in os.walk("words"):
-    for file in files:
-        if not file.endswith(".json"):
-            continue
-        with open(os.path.join(root, file), "r", encoding="utf-8") as f:
-            words.update(json.load(f))
 
 __plugin_meta__ = PluginMetadata(
     name="Savepic",
@@ -89,7 +76,6 @@ __plugin_meta__ = PluginMetadata(
     type="application",
     supported_adapters=["~onebot.v11"],
 )
-INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 
 p_config = get_plugin_config(Config)
 repic = on_command("repic", priority=5, permission=BLACK_GROUP)
@@ -101,13 +87,6 @@ a_spic = Alconna(
     Option("-ac", help_text="允许相似碰撞"),
     Args.filename[str],
     meta=CommandMeta(description="保存图片，默认保存到本群"),
-)
-s_mvpic = on_command("mvpic", priority=5, permission=BLACK_GROUP)
-a_mvpic = Alconna(
-    "/mvpic",
-    Option("-l", args=Args.filename[str], help_text="本地图片", action=append),
-    Option("-g", args=Args.filename[str], help_text="全局图片", action=append),
-    meta=CommandMeta(description="重命名图片，按照参数先后判断"),
 )
 s_simpic = on_command("simpic", priority=5, permission=BLACK_GROUP)
 s_listpic = on_command("listpic", priority=5, permission=BLACK_GROUP)
@@ -175,11 +154,11 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
             await bot.send(event, V11Msg([pic.name, url_to_image(pic.url)]))
     except DBAPIError as ex:
         await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
         )
     except Exception as ex:
         await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
         )
 
 
@@ -194,7 +173,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         pages = int(pages)
     except Exception as ex:
         await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
         )
 
     group_id = (
@@ -208,11 +187,11 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
             await bot.send(event, "\n".join(pic))
     except DBAPIError as ex:
         await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
         )
     except Exception as ex:
         await repic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
         )
 
 
@@ -248,7 +227,7 @@ async def _(
     if command.d:
         if not (await PIC_AMDIN(bot, event) or await GROUP_ADMIN(bot, event)):
             await spic.finish(
-                random.choice(words.get("permission denied", ["没有权限"]))
+                random.choice(WORDS.get("permission denied", ["没有权限"]))
             )
         try:
             await delete(filename, state["savepiv_group"])
@@ -263,11 +242,11 @@ async def _(
         matcher.set_arg("picture", picture)
 
 
-@got_random_prompt(spic, "picture", words.get("wait for image", ["图呢"]))
+@got_random_prompt(spic, "picture", WORDS.get("wait for image", ["图呢"]))
 async def _(state: T_State, picture: V11Msg = Arg()):
     picture = picture.get("image")
     if not picture:
-        await spic.finish(random.choice(words.get("not image", ["6，这也不是图啊"])))
+        await spic.finish(random.choice(WORDS.get("not image", ["6，这也不是图啊"])))
 
     try:
         dir = await write_pic(picture[0].data["url"], p_config.savepic_dir)
@@ -284,7 +263,7 @@ async def _(state: T_State, picture: V11Msg = Arg()):
     except SameNameException:
         os.remove(dir)
         await spic.finish(
-            random.choice(words.get("name has been taken", ["文件名重复"]))
+            random.choice(WORDS.get("name has been taken", ["文件名重复"]))
         )
     except SimilarPictureException as ex:
         os.remove(dir)
@@ -292,13 +271,13 @@ async def _(state: T_State, picture: V11Msg = Arg()):
             image = await load_pic(ex.url)
         except Exception as exc:
             await spic.finish(
-                f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{exc}'
+                f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{exc}'
             )
 
         await spic.finish(
             V11Msg(
                 [
-                    random.choice(words.get("similar picture", ["存在相似图片"])),
+                    random.choice(WORDS.get("similar picture", ["存在相似图片"])),
                     "\n\n" + ex.name,
                     f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n",
                     V11Seg.image(file=image),
@@ -307,68 +286,11 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         )
     except Exception as ex:
         os.remove(dir)
-        await spic.finish(f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}')
+        await spic.finish(f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}')
     await spic.send(
-        random.choice(words.get("save succeed", ["保存成功"]))
+        random.choice(WORDS.get("save succeed", ["保存成功"]))
         + state["savepiv_warning"]
     )
-
-
-@s_mvpic.handle()
-async def _(
-    bot: Bot,
-    event: GroupMessageEvent,
-):
-    if not (await PIC_AMDIN(bot, event) or await GROUP_ADMIN(bot, event)):
-        await spic.finish(random.choice(words.get("permission denied", ["没有权限"])))
-
-    cmd = a_mvpic.parse(event.message.extract_plain_text())
-    if not cmd.matched:
-        await s_mvpic.finish(str(cmd.error_info) + "\n\n" + a_mvpic.get_help())
-    options = cmd.options
-    if not options:
-        await s_mvpic.finish("文件名呢？" + "\n\n" + a_mvpic.get_help())
-
-    sg = "globe" if list(options.keys())[0] == "g" else f"qq_group:{event.group_id}"
-    if len(options["g" if sg == "globe" else "l"].args.get("filename", [])) >= 2:
-        dg = sg
-    else:
-        dg = "globe" if sg != "globe" else f"qq_group:{event.group_id}"
-    if ("g" if dg == "globe" else "l") not in options:
-        await s_mvpic.finish("至多只有一个文件名哦？" + "\n\n" + a_mvpic.get_help())
-
-    if (not await PIC_AMDIN(bot, event)) and await GROUP_ADMIN(bot, event):
-        if sg == "globe":
-            await spic.finish("管理员不能改全局名称哦~")
-        if dg == "globe":
-            await spic.finish("管理员不能改全局名称哦~")
-
-    sname = options["g" if sg == "globe" else "l"].args["filename"][0]
-    dname = options["g" if dg == "globe" else "l"].args["filename"][
-        1 if sg == dg else 0
-    ]
-    for c in INVALID_FILENAME_CHARACTERS:
-        sname = sname.replace(c, "-")
-        dname = dname.replace(c, "-")
-    if not sname.endswith((".jpg", ".png", ".gif")):
-        sname += ".jpg"
-    if not dname.endswith((".jpg", ".png", ".gif")):
-        dname += ".jpg"
-
-    try:
-        await rename(sname, dname, sg, dg)
-    except NoPictureException as ex:
-        await spic.finish(
-            random.choice(words.get("not found", [ex.name + " 没有找到哦"]))
-            + f"\n{ex.name} 没有找到哦"
-        )
-    except SameNameException:
-        await spic.finish(
-            random.choice(words.get("name has been taken", ["文件名重复"]))
-        )
-    except Exception as ex:
-        await spic.finish(f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}')
-    await spic.finish(random.choice(words.get("rename succeed", ["图片已重命名"])))
 
 
 @s_simpic.handle()
@@ -380,7 +302,7 @@ async def _(bot: Bot, event: MessageEvent, args: V11Msg = CommandArg()):
     if not picture:
         await s_simpic.finish(
             random.choice(
-                words.get("missing image reference", ["没找到引用消息中的图片"])
+                WORDS.get("missing image reference", ["没找到引用消息中的图片"])
             )
         )
     vec = img2vec(await load_pic(picture[0].data["url"]))
@@ -411,8 +333,8 @@ async def _(bot: Bot, event: MessageEvent, args: V11Msg = CommandArg()):
                 ),
             )
         else:
-            await s_simpic.send(random.choice(words.get("not found", ["Nope."])))
+            await s_simpic.send(random.choice(WORDS.get("not found", ["Nope."])))
     except Exception as ex:
         await s_simpic.finish(
-            f'{random.choice(words.get("error", ["出错了喵~"]))}\n\n{ex}'
+            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
         )

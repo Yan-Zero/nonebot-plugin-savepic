@@ -7,6 +7,8 @@ from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11G
 from .config import Config
+from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
+
 
 plugin_config = get_plugin_config(Config)
 
