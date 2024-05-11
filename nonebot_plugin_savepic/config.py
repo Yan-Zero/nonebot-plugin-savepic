@@ -1,5 +1,15 @@
+import os
+import json
 from pydantic import BaseModel
-from enum import Enum
+
+
+WORDS = {}
+for root, _, files in os.walk("words"):
+    for file in files:
+        if not file.endswith(".json"):
+            continue
+        with open(os.path.join(root, file), "r", encoding="utf-8") as f:
+            WORDS.update(json.load(f))
 
 
 class Config(BaseModel):
