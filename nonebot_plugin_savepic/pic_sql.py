@@ -37,15 +37,15 @@ async def update_vec(pic: PicData):
         return
 
     async with AsyncSession(_async_database) as db_session:
-        if pic.u_vec_text:
-            pic.u_vec_text = False
-            await _async_embedding_database.execute(
-                "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
-                str(word2vec(pic.name)),
-                pic.id,
-            )
-        db_session.merge(pic)
-        db_session.commit()
+        # if pic.u_vec_text:
+        pic.u_vec_text = False
+        await _async_embedding_database.execute(
+            "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
+            str(word2vec(pic.name)),
+            pic.id,
+        )
+        await db_session.merge(pic)
+        await db_session.commit()
 
 
 async def select_pic(filename: str, group: str):
