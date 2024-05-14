@@ -11,7 +11,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
 from sqlalchemy.exc import DBAPIError
-from arclet.alconna import Alconna, Option, Args, CommandMeta, append
+from arclet.alconna import Alconna, Option, Args, CommandMeta
 import os
 import random
 from typing import (
@@ -46,20 +46,19 @@ from .config import Config
 from .config import WORDS
 from .pic_sql import (  # noqa: E402
     savepic,
-    rename,
     delete,
     regexp_pic,
-    listpic,
 )
 from .rule import PIC_AMDIN
 from .rule import BLACK_GROUP
 from .rule import GROUP_ADMIN
-from .ext_listener import pic_listen  # noqa: E402, F401
-from .picture import write_pic, load_pic  # noqa: E402
+from .picture import write_pic, load_pic
 from .ai_utils import img2vec
 from .randpic import url_to_image
-from .countpic import cpic
 from .mvpic import INVALID_FILENAME_CHARACTERS
+from .listpic import s_listpic
+from .ext_listener import pic_listen
+from .countpic import cpic
 
 
 __plugin_meta__ = PluginMetadata(
@@ -89,7 +88,6 @@ a_spic = Alconna(
     meta=CommandMeta(description="保存图片，默认保存到本群"),
 )
 s_simpic = on_command("simpic", priority=5, permission=BLACK_GROUP)
-s_listpic = on_command("listpic", priority=5, permission=BLACK_GROUP)
 
 
 def got_random_prompt(
@@ -152,39 +150,6 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         pic = await regexp_pic(reg, group_id)
         if pic:
             await bot.send(event, V11Msg([pic.name, url_to_image(pic.url)]))
-    except DBAPIError as ex:
-        await repic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
-        )
-    except Exception as ex:
-        await repic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
-
-
-@s_listpic.handle()
-async def _(bot: Bot, event, args: V11Msg = CommandArg()):
-    reg = args.extract_plain_text().strip().rsplit("\\page", maxsplit=1)
-    try:
-        if len(reg) > 1:
-            reg, pages = reg
-        else:
-            reg, pages = reg[0], 0
-        pages = int(pages)
-    except Exception as ex:
-        await repic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
-
-    group_id = (
-        "globe"
-        if not isinstance(event, GroupMessageEvent)
-        else f"qq_group:{event.group_id}"
-    )
-    try:
-        pic = await listpic(reg, group_id, pages=pages)
-        if pic:
-            await bot.send(event, "\n".join(pic))
     except DBAPIError as ex:
         await repic.finish(
             f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex.orig}'

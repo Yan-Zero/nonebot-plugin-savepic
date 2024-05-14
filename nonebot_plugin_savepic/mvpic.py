@@ -1,5 +1,4 @@
 import random
-import re
 from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.internal.adapter import Bot

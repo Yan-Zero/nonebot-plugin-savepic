@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nonebot-plugin-savepic"
-version = "0.2.7"
+version = "0.2.8"
 description = "保存表情包（语录）与随机出图"
 authors = ["Yan <1964649083@qq.com>"]
 license = "MIT"

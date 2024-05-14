@@ -285,7 +285,12 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
     reg = reg.strip()
     if not reg:
         reg = ".*"
-    pages -= 1
+
+    pages = max(pages - 1, 0)
+    _count = min(
+        max(1, p_config.count_per_page_in_list * p_config.max_page_in_listpic), 1000
+    )
+
     async with AsyncSession(_async_database) as db_session:
         pics = await db_session.scalars(
             select(PicData)
@@ -293,8 +298,8 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
             .where(PicData.name != "")
             .where(PicData.name.regexp_match(reg, flags="i"))
             .order_by(PicData.name)
-            .offset((0 if pages < 0 else pages) * 10)
-            .limit(10)
+            .offset(pages * p_config.count_per_page_in_list)
+            .limit(_count)
         )
         if pics:
             return [str(pic.name) for pic in pics]
