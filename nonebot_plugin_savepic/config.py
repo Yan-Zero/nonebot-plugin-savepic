@@ -33,3 +33,6 @@ class Config(BaseModel):
 
     embedding_sqlurl: str
     black_group: list[str]
+
+    notfound_with_jpg: bool = True
+    """ randpic 的时候，尝试带 .jpg 再度检索向量 """

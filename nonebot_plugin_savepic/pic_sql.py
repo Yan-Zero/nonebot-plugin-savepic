@@ -30,14 +30,31 @@ def AsyncDatabase():
     return _async_database
 
 
+async def update_vec(pic: PicData):
+    if pic is None:
+        return
+    if not pic.u_vec_text:
+        return
+
+    async with AsyncSession(_async_database) as db_session:
+        if pic.u_vec_text:
+            pic.u_vec_text = False
+            await _async_embedding_database.execute(
+                "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
+                str(word2vec(pic.name)),
+                pic.id,
+            )
+        db_session.merge(pic)
+        db_session.commit()
+
+
 async def select_pic(filename: str, group: str):
     async with AsyncSession(_async_database) as db_session:
-        pic = await db_session.scalar(
+        if pic := await db_session.scalar(
             select(PicData)
             .where(PicData.name == filename)
             .where(PicData.group == group)
-        )
-        if pic:
+        ):
             await update_vec(pic)
             return pic
         return await db_session.scalar(
@@ -97,19 +114,6 @@ async def savepic(
         if despic:
             raise SameNameException(despic.name)
 
-        # if not collision_allow:
-        #     ret = _pincone_index.query(img_vec, top_k=25)["matches"]
-        #     for i in ret:
-        #         if i["score"] and i["score"] < 0.98:
-        #             break
-        #         despic = await db_session.scalar(
-        #             select(PicData)
-        #             .where(PicData.id == int(ret[0]["id"]))
-        #             .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
-        #         )
-        #         if despic:
-        #             raise SimilarPictureException(despic.name, i["score"], despic.url)
-
         empty = await db_session.scalar(select(PicData).where(PicData.name == ""))
         if empty:
             pic.id = empty.id
@@ -118,7 +122,6 @@ async def savepic(
             db_session.add(pic)
         await db_session.flush()
 
-        # _pincone_index.upsert([(str(pic.id), img_vec)])
         await _async_embedding_database.execute(
             (
                 "INSERT INTO savepic_word2vec (id, embedding) VALUES ($1, $2) "
@@ -145,9 +148,9 @@ async def rename(ori: str, des: str, s_group: str, d_group: str):
         )
         if despic:
             raise SameNameException(despic.name)
+
         pic.name = des
         pic.group = d_group
-
         pic.u_vec_text = False
         await _async_embedding_database.execute(
             "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
@@ -218,6 +221,7 @@ async def randpic(
         ):
             await update_vec(pic)
             return pic, ""
+
         if not vector:
             return None, ""
 
@@ -237,6 +241,25 @@ async def randpic(
             .order_by(sa.func.random())
         ):
             return pic, "（语义向量相似度检索）"
+
+        if p_config.notfound_with_jpg:
+            datas = await _async_embedding_database.fetch(
+                (
+                    "SELECT id FROM savepic_word2vec "
+                    "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
+                    "ORDER BY embedding <#> $1 LIMIT 8;"
+                ),
+                str(word2vec(name + ".jpg")),
+            )
+            if pic := await db_session.scalar(
+                select(PicData)
+                .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+                .where(PicData.id.in_([i["id"] for i in datas]))
+                .where(PicData.name != "")
+                .order_by(sa.func.random())
+            ):
+                return pic, "（语义向量相似度检索）"
+
         return None, False
 
 
@@ -256,29 +279,6 @@ async def countpic(reg: str, group: str = "globe") -> int:
         if pics:
             return pics
         return 0
-
-
-async def update_vec(pic: PicData):
-    if not pic:
-        return
-    if not pic.u_vec_text:  # and not pic.u_vec_img:
-        return
-    if pic.u_vec_text:
-        pic.u_vec_text = False
-        await _async_embedding_database.execute(
-            "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
-            str(word2vec(pic.name)),
-            pic.id,
-        )
-    # if pic.u_vec_img:
-    #     pic.u_vec_img = False
-    #     _pincone_index.upsert(
-    #         [(str(pic.id), file2vec(pathlib.Path(pic.url), pic.name))]
-    #     )
-    async with AsyncSession(_async_database) as db_session:
-        db_session.merge(pic)
-        await db_session.flush()
-        db_session.commit()
 
 
 async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
