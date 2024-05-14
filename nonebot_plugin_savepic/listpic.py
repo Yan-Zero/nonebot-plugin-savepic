@@ -24,7 +24,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         if len(reg) > 1:
             reg, pages = reg
         else:
-            reg, pages = reg[0], 0
+            reg, pages = reg[0], 1
         pages = int(pages)
     except Exception as ex:
         await s_listpic.finish(
@@ -36,32 +36,43 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
     )
     try:
         pics = await listpic(reg, group_id, pages=pages)
-        if pics:
-            message = {}
-            cpp = p_config.count_per_page_in_list
-            for i in range(len(pics) // cpp):
-                message.append(
-                    {
-                        "type": "node",
-                        "data": {
-                            "uin": str(event.get_user_id()),
-                            "name": f"Page {pages+i}",
-                            "content": "\n".join(pics[i * cpp : (i + 1) * cpp])
-                            + f"\n\nPage {pages+i}",
+        if not pics:
+            return
+
+        cpp = max(p_config.count_per_page_in_list, 1)
+        if p_config.forward_when_listpic:
+            message = []
+            for i in range(len(pics) // cpp + 1):
+                if pics[i * cpp : (i + 1) * cpp]:
+                    message.append(
+                        {
+                            "type": "node",
+                            "data": {
+                                "uin": str(event.get_user_id()),
+                                "name": f"Page {pages+i}",
+                                "content": V11Seg.text(
+                                    "\n".join(pics[i * cpp : (i + 1) * cpp])
+                                    + f"\n\nPage {pages+i}"
+                                ),
+                            },
                         },
-                    },
-                )
+                    )
 
             if isinstance(event, V11GME):
                 await bot.call_api(
-                    "send_group_forward_msg", group_id=event.group_id, messages=message
+                    "send_group_forward_msg",
+                    group_id=event.group_id,
+                    messages=message,
                 )
             else:
-                await s_listpic.finish(
+                await s_listpic.send(
                     V11Seg.forward(
                         await bot.call_api("send_forward_msg", messages=message)
                     )
                 )
+            return
+
+        await s_listpic.send("\n".join(pics[:cpp]))
 
     except DBAPIError as ex:
         await s_listpic.finish(
