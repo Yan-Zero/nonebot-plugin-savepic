@@ -6,7 +6,6 @@ import asyncpg
 from nonebot import get_driver
 import dashscope
 import pathlib
-from pinecone import Pinecone, ServerlessSpec
 
 from .model import PicData
 from .picture import del_pic
@@ -20,7 +19,6 @@ from .error import NoPictureException
 gdriver = get_driver()
 p_config = Config.parse_obj(gdriver.config)
 _async_database = None
-_pincone_index = None
 _async_embedding_database = None
 
 
@@ -62,37 +60,6 @@ async def select_pic(filename: str, group: str):
             .where(PicData.name == filename)
             .where(PicData.group == "globe")
         )
-
-
-# async def get_most_similar_pic(
-#     img_vec: list[float],
-#     group_id: str,
-#     ignore_diagonal: bool = False,
-#     ignore_min: bool = False,
-# ) -> tuple[float, PicData]:
-#     async with AsyncSession(_async_database) as db_session:
-#         ret = _pincone_index.query(img_vec, top_k=20)["matches"]
-#         if not ret:
-#             return None, None
-#         if not ret[0]["id"]:
-#             return None, None
-#         if ignore_diagonal and ret[0]["score"] >= 0.999:
-#             ret.pop(0)
-
-#         for i in ret:
-#             if i["score"] < 0.65 and not ignore_min:
-#                 return None, None
-#             if i["id"]:
-#                 despic = await db_session.scalar(
-#                     select(PicData)
-#                     .where(PicData.id == int(i["id"]))
-#                     .where(PicData.name != "")
-#                     .where(sa.or_(PicData.group == group_id, PicData.group == "globe"))
-#                 )
-#                 if despic:
-#                     return i["score"], despic
-
-#         return None, None
 
 
 async def savepic(
@@ -173,7 +140,6 @@ async def delete(filename: str, group: str):
         del_pic(pic.url)
         pic.name = ""
         await db_session.merge(pic)
-        # _pincone_index.delete(ids=[str(pic.id)])
         await _async_embedding_database.execute(
             "UPDATE savepic_word2vec SET embedding = NULL WHERE id = $1", pic.id
         )
@@ -307,7 +273,7 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
 
 async def init_db():
     # check if the table exists
-    global _async_database, _pincone_index, _async_embedding_database
+    global _async_database, _async_embedding_database
     _async_database = create_async_engine(
         p_config.savepic_sqlurl,
         future=True,
@@ -355,22 +321,6 @@ async def init_db():
             )
         )
 
-    if not p_config.pinecone_apikey:
-        raise Exception("请配置 pinecone_apikey")
-    if not p_config.pinecone_environment:
-        raise Exception("请配置 pinecone_environment")
-
-    pc = Pinecone(api_key=p_config.pinecone_apikey)
-    if p_config.pinecone_index not in pc.list_indexes().names():
-        pc.create_index(
-            name=p_config.pinecone_index,
-            dimension=1536,
-            metric="euclidean",
-            spec=ServerlessSpec(cloud="aws", region="us-west-2"),
-        )
-    if not _pincone_index:
-        _pincone_index = pc.Index(p_config.pinecone_index)
-
 
 @gdriver.on_startup
 async def _():
@@ -393,7 +343,6 @@ async def _():
     #                     .where(PicData.name != "")
     #                 )
     #                 if pic:
-    #                     _pincone_index.upsert([(str(pic.id), files[i])])
     #                     print(f"{pic.name} 加载成功")
     #         except Exception as ex:
     #             print(ex)
