@@ -6,6 +6,7 @@ import asyncpg
 from nonebot import get_driver
 import dashscope
 import pathlib
+from nonebot import get_plugin_config
 
 from .model import PicData
 from .picture import del_pic
@@ -17,7 +18,7 @@ from .error import SimilarPictureException
 from .error import NoPictureException
 
 gdriver = get_driver()
-p_config = Config.parse_obj(gdriver.config)
+p_config = get_plugin_config(Config)
 _async_database = None
 _async_embedding_database = None
 
@@ -277,12 +278,15 @@ async def init_db():
     _async_database = create_async_engine(
         p_config.savepic_sqlurl,
         future=True,
-        # connect_args={"statement_cache_size": 0},
+        pool_size=2,
+        max_overflow=0,
     )
     if p_config.embedding_sqlurl.startswith("postgresql+asyncpg"):
         p_config.embedding_sqlurl = "postgresql" + p_config.embedding_sqlurl[18:]
     _async_embedding_database = await asyncpg.create_pool(
-        p_config.embedding_sqlurl  # , statement_cache_size=0
+        p_config.embedding_sqlurl,
+        min_size=1,
+        max_size=2,
     )
     dashscope.api_key = p_config.dashscope_api
 
@@ -328,24 +332,3 @@ async def _():
         raise Exception("请配置 savepic_sqlurl")
 
     await init_db()
-    # if os.path.exists("savepic_picdata.json"):
-    #     print("加载附加数据")
-    #     with open("savepic_picdata.json", "r") as f:
-    #         files = json.load(f)
-    #     failed = []
-    #     for i in files:
-    #         url = os.path.join("savepic", i)
-    #         try:
-    #             async with AsyncSession(_async_database) as db_session:
-    #                 pic = await db_session.scalar(
-    #                     select(PicData)
-    #                     .where(PicData.url == url)
-    #                     .where(PicData.name != "")
-    #                 )
-    #                 if pic:
-    #                     print(f"{pic.name} 加载成功")
-    #         except Exception as ex:
-    #             print(ex)
-    #             failed.append(url)
-    #     os.remove("savepic_picdata.json")
-    #     print("向量数据加载完成")

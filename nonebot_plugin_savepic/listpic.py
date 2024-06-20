@@ -8,10 +8,11 @@ from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from sqlalchemy.exc import DBAPIError
 
+
 from .rule import BLACK_GROUP
-from .config import WORDS
 from .pic_sql import listpic
 from .config import Config
+from .chat import error_chat
 
 p_config: Config = get_plugin_config(Config)
 s_listpic = on_command("listpic", priority=5, permission=BLACK_GROUP)
@@ -27,9 +28,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
             reg, pages = reg[0], 1
         pages = int(pages)
     except Exception as ex:
-        await s_listpic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
+        await s_listpic.finish(f"出错了。{await error_chat(ex)}")
 
     group_id = (
         "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
@@ -75,10 +74,6 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         await s_listpic.send("\n".join(pics[:cpp]))
 
     except DBAPIError as ex:
-        await s_listpic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex.orig}'
-        )
+        await s_listpic.finish(f"出错了。{await error_chat(ex.orig)}")
     except Exception as ex:
-        await s_listpic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
+        await s_listpic.finish(f"出错了。{await error_chat(ex)}")

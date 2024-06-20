@@ -3,10 +3,11 @@ from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.internal.adapter import Bot
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
+
+from .chat import error_chat
 from .rule import BLACK_GROUP
 from .rule import PIC_AMDIN
 from .rule import GROUP_ADMIN
-from .config import WORDS
 from .pic_sql import rename
 from .error import NoPictureException
 from .error import SameNameException
@@ -28,9 +29,7 @@ INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 @s_mvpic.handle()
 async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not (await PIC_AMDIN(bot, event) or await GROUP_ADMIN(bot, event)):
-        await s_mvpic.finish(
-            random.choice(WORDS.get("permission denied", ["没有权限"]))
-        )
+        await s_mvpic.finish("没有权限")
 
     cmd = args.extract_plain_text().strip()
     name = []
@@ -130,16 +129,9 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     try:
         await rename(sname, dname, sg, dg)
     except NoPictureException as ex:
-        await s_mvpic.finish(
-            random.choice(WORDS.get("not found", [ex.name + " 没有找到哦"]))
-            + f"\n{ex.name} 没有找到哦"
-        )
+        await s_mvpic.finish(f"\n{ex.name} 没有找到哦")
     except SameNameException:
-        await s_mvpic.finish(
-            random.choice(WORDS.get("name has been taken", ["文件名重复"]))
-        )
+        await s_mvpic.finish("文件名重复")
     except Exception as ex:
-        await s_mvpic.finish(
-            f'{random.choice(WORDS.get("error", ["出错了喵~"]))}\n\n{ex}'
-        )
-    await s_mvpic.finish(random.choice(WORDS.get("rename succeed", ["图片已重命名"])))
+        await s_mvpic.finish(f"出错了。{await error_chat(ex)}")
+    await s_mvpic.finish("图片已重命名")
