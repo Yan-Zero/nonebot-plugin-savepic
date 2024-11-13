@@ -6,11 +6,10 @@ from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 
-from .ai_utils import word2vec
-from .rule import BLACK_GROUP
-from .pic_sql import randpic
+from .core.sql import randpic
+from .core.utils import word2vec
 
-rpic = on_command("randpic", priority=5, permission=BLACK_GROUP)
+rpic = on_command("randpic", priority=5)
 
 
 def url_to_image(url: str):

@@ -5,10 +5,9 @@ This module is used to define the permission of the bot.
 from nonebot import get_plugin_config
 from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11G
-from .config import Config
 from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
+from .config import Config
 
 plugin_config = get_plugin_config(Config)
 
@@ -33,22 +32,4 @@ class Savepic_Admin(Permission):
         )
 
 
-class BlackGroup(Permission):
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "BlackGroup()"
-
-    async def __call__(self, bot: Bot, event: Event) -> bool:
-        if not isinstance(event, V11G):
-            return True
-        try:
-            group_id = str(event.group_id)
-        except Exception:
-            return True
-        return group_id not in plugin_config.black_group
-
-
 PIC_AMDIN = Permission(Savepic_Admin())
-BLACK_GROUP = Permission(BlackGroup())

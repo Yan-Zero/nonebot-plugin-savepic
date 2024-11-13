@@ -1,21 +1,22 @@
+import asyncpg
+import dashscope
 import sqlalchemy as sa
+
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
-import asyncpg
 from nonebot import get_driver
-import dashscope
-import pathlib
 from nonebot import get_plugin_config
 
-from .model import PicData
-from .picture import del_pic
-from .ai_utils import word2vec
-from .ai_utils import file2vec
-from .config import Config
 from .error import SameNameException
 from .error import SimilarPictureException
 from .error import NoPictureException
+from ..model import PicData
+from .fileio import del_pic
+from .utils import word2vec
+from .utils import file2vec
+from ..config import Config
+
 
 gdriver = get_driver()
 p_config = get_plugin_config(Config)

@@ -1,5 +1,3 @@
-from pathlib import Path
-from nonebot import require
 from nonebot import get_plugin_config
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
@@ -36,22 +34,22 @@ from nonebot.internal.adapter import (
 )
 
 from .chat import error_chat
-from .error import SimilarPictureException
-from .error import SameNameException
+from .core.error import SameNameException
+from .core.error import SimilarPictureException
+from .core.error import SamePictureHashException
 from .config import Config
-from .pic_sql import savepic
-from .pic_sql import delete
-from .pic_sql import regexp_pic
+from .core.sql import savepic
+from .core.sql import delete
+from .core.sql import regexp_pic
 from .rule import PIC_AMDIN
-from .rule import BLACK_GROUP
 from .rule import GROUP_ADMIN
-from .picture import write_pic, load_pic
-from .ai_utils import img2vec
+from .core.fileio import write_pic, load_pic
+from .core.utils import img2vec
 from .randpic import url_to_image
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .listpic import s_listpic
 from .ext_listener import pic_listen
-from .countpic import cpic
+from .command import cpic
 
 
 __plugin_meta__ = PluginMetadata(
@@ -70,8 +68,8 @@ __plugin_meta__ = PluginMetadata(
 )
 
 p_config = get_plugin_config(Config)
-repic = on_command("repic", priority=5, permission=BLACK_GROUP)
-spic = on_command("savepic", priority=5, permission=BLACK_GROUP)
+repic = on_command("repic", priority=5)
+spic = on_command("savepic", priority=5)
 a_spic = Alconna(
     "/savepic",
     Option("-d", help_text="删除图片"),
@@ -80,7 +78,7 @@ a_spic = Alconna(
     Args.filename[str],
     meta=CommandMeta(description="保存图片，默认保存到本群"),
 )
-s_simpic = on_command("simpic", priority=5, permission=BLACK_GROUP)
+s_simpic = on_command("simpic", priority=5)
 
 
 def got_random_prompt(
@@ -191,8 +189,11 @@ async def _(state: T_State, picture: V11Msg = Arg()):
 
     try:
         dir = await write_pic(picture[0].data["url"], p_config.savepic_dir)
+    except SamePictureHashException:
+        await spic.finish(Message(["存在相同图片", picture]))
     except Exception as ex:
         await spic.finish("存图失败。" + "\n" + str(ex))
+
     try:
         await savepic(
             state["savepiv_filename"],

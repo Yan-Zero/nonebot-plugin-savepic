@@ -1,18 +1,16 @@
-import random
 from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.internal.adapter import Bot
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 
 from .chat import error_chat
-from .rule import BLACK_GROUP
 from .rule import PIC_AMDIN
 from .rule import GROUP_ADMIN
-from .pic_sql import rename
-from .error import NoPictureException
-from .error import SameNameException
+from .core.sql import rename
+from .core.error import NoPictureException
+from .core.error import SameNameException
 
-s_mvpic = on_command("mvpic", priority=5, permission=BLACK_GROUP)
+s_mvpic = on_command("mvpic", priority=5)
 INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 
 

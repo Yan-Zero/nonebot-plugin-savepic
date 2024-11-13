@@ -1,4 +1,3 @@
-import random
 from nonebot import on_command
 from nonebot import get_plugin_config
 from nonebot.params import CommandArg
@@ -9,13 +8,12 @@ from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from sqlalchemy.exc import DBAPIError
 
 
-from .rule import BLACK_GROUP
-from .pic_sql import listpic
+from .core.sql import listpic
 from .config import Config
 from .chat import error_chat
 
 p_config: Config = get_plugin_config(Config)
-s_listpic = on_command("listpic", priority=5, permission=BLACK_GROUP)
+s_listpic = on_command("listpic", priority=5)
 
 
 @s_listpic.handle()

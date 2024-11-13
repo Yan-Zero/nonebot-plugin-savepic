@@ -6,6 +6,15 @@ class SameNameException(Exception):
         return "Name {} already exists".format(self.name)
 
 
+class SamePictureHashException(Exception):
+    def __init__(self, name, url):
+        self.name = name
+        self.url = url
+
+    def __str__(self):
+        return "Picture {} already exists".format(self.name)
+
+
 class SimilarPictureException(Exception):
     def __init__(self, name, similarity: float, url: str):
         self.name = name
