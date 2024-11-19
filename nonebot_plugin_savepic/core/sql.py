@@ -6,20 +6,19 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
 from nonebot import get_driver
-from nonebot import get_plugin_config
 
 from .error import SameNameException
 from .error import SimilarPictureException
 from .error import NoPictureException
 from ..model import PicData
 from .fileio import del_pic
+from .fileio import load_pic
 from .utils import word2vec
-from .utils import file2vec
-from ..config import Config
+from .utils import img2vec
+from ..config import p_config
 
 
 gdriver = get_driver()
-p_config = get_plugin_config(Config)
 _async_database = None
 _async_embedding_database = None
 
@@ -33,18 +32,25 @@ def AsyncDatabase():
 async def update_vec(pic: PicData):
     if pic is None:
         return
-    if not pic.u_vec_text:
+    if not pic.u_vec_text and not pic.u_vec_img:
         return
 
     async with AsyncSession(_async_database) as db_session:
-        # if pic.u_vec_text:
-        pic.u_vec_text = False
-        await _async_embedding_database.execute(
-            "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
-            str(word2vec(pic.name)),
-            pic.id,
-        )
-        await db_session.merge(pic)
+        if pic.u_vec_text:
+            pic.u_vec_text = False
+            await _async_embedding_database.execute(
+                "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
+                str(word2vec(pic.name)),
+                pic.id,
+            )
+            await db_session.merge(pic)
+        if pic.u_vec_img:
+            pic.u_vec_img = False
+            await _async_embedding_database.execute(
+                "UPDATE savepic_img2vec SET embedding = $1 WHERE id = $2",
+                str(img2vec(await load_pic(pic.url))),
+                pic.id,
+            )
         await db_session.commit()
 
 
@@ -82,6 +88,27 @@ async def savepic(
         )
         if despic:
             raise SameNameException(despic.name)
+        if not collision_allow:
+            if datas := await _async_embedding_database.fetch(
+                (
+                    "SELECT id, embedding <#> $1 AS similarity FROM savepic_word2vec "
+                    "WHERE embedding IS NOT NULL and embedding <#> $1 >= 0.91 "
+                    "ORDER BY similarity LIMIT 8;"
+                ),
+                str(img_vec),
+            ):
+                for i in datas:
+                    while pic := await db_session.scalar(
+                        select(PicData)
+                        .where(
+                            sa.or_(PicData.group == group_id, PicData.group == "globe")
+                        )
+                        .where(PicData.id == i["id"])
+                        .where(PicData.name != "")
+                    ):
+                        raise SimilarPictureException(
+                            pic.name, i["similarity"], pic.url
+                        )
 
         empty = await db_session.scalar(select(PicData).where(PicData.name == ""))
         if empty:
@@ -99,7 +126,38 @@ async def savepic(
             pic.id,
             str(word2vec(filename)),
         )
+        await _async_embedding_database.execute(
+            (
+                "INSERT INTO savepic_img2vec (id, embedding) VALUES ($1, $2) "
+                "ON CONFLICT (id) DO UPDATE SET embedding = $2"
+            ),
+            pic.id,
+            str(img_vec),
+        )
         await db_session.commit()
+
+
+async def simpic(img_vec: list[float], group: str = "globe", ignore_min: bool = False):
+    async with AsyncSession(_async_database) as db_session:
+        if datas := await _async_embedding_database.fetch(
+            (
+                "SELECT id, (embedding <#> $1) AS similarity FROM savepic_word2vec "
+                "WHERE embedding IS NOT NULL "
+                + ("" if ignore_min else "and embedding <#> $1 >= 0.75 ")
+                + "ORDER BY similarity LIMIT 10;"
+            ),
+            str(img_vec),
+        ):
+            for i in datas:
+                print(i)
+                while pic := await db_session.scalar(
+                    select(PicData)
+                    .where(sa.or_(PicData.group == group, PicData.group == "globe"))
+                    .where(PicData.id == i["id"])
+                    .where(PicData.name != "")
+                ):
+                    return i["similarity"], pic
+        return None, None
 
 
 async def rename(ori: str, des: str, s_group: str, d_group: str):
@@ -322,6 +380,24 @@ async def init_db():
                 "CREATE TABLE savepic_word2vec (\n"
                 "  id bigserial PRIMARY KEY, \n"
                 "  embedding vector(1536)\n"
+                ");"
+            )
+        )
+
+    if not (
+        await _async_embedding_database.fetch(
+            (
+                "SELECT EXISTS "
+                "(SELECT FROM pg_tables "
+                "WHERE tablename = 'savepic_img2vec');"
+            )
+        )
+    )[0]["exists"]:
+        await _async_embedding_database.execute(
+            (
+                "CREATE TABLE savepic_img2vec (\n"
+                "  id bigserial PRIMARY KEY, \n"
+                "  embedding vector(1024)\n"
                 ");"
             )
         )

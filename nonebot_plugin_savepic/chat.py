@@ -15,7 +15,7 @@ except Exception:
 
 async def error_chat(
     error: str,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-1.5-flash-latest",
     temperature: float = 0.2,
     **kwargs,
 ):

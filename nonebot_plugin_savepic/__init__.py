@@ -34,22 +34,22 @@ from nonebot.internal.adapter import (
 )
 
 from .chat import error_chat
-from .core.error import SameNameException
-from .core.error import SimilarPictureException
-from .core.error import SamePictureHashException
+from .rule import PIC_AMDIN
+from .rule import GROUP_ADMIN
+from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
+from .config import p_config
+from .command import cpic
+from .listpic import s_listpic
+from .randpic import url_to_image
 from .core.sql import savepic
 from .core.sql import delete
 from .core.sql import regexp_pic
-from .rule import PIC_AMDIN
-from .rule import GROUP_ADMIN
+from .core.error import SameNameException
+from .core.error import SimilarPictureException
+from .core.error import SamePictureHashException
 from .core.fileio import write_pic, load_pic
 from .core.utils import img2vec
-from .randpic import url_to_image
-from .mvpic import INVALID_FILENAME_CHARACTERS
-from .listpic import s_listpic
-from .ext_listener import pic_listen
-from .command import cpic
 
 
 __plugin_meta__ = PluginMetadata(
@@ -67,7 +67,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters=["~onebot.v11"],
 )
 
-p_config = get_plugin_config(Config)
+
 repic = on_command("repic", priority=5)
 spic = on_command("savepic", priority=5)
 a_spic = Alconna(
@@ -78,7 +78,6 @@ a_spic = Alconna(
     Args.filename[str],
     meta=CommandMeta(description="保存图片，默认保存到本群"),
 )
-s_simpic = on_command("simpic", priority=5)
 
 
 def got_random_prompt(
@@ -190,7 +189,7 @@ async def _(state: T_State, picture: V11Msg = Arg()):
     try:
         dir = await write_pic(picture[0].data["url"], p_config.savepic_dir)
     except SamePictureHashException:
-        await spic.finish(Message(["存在相同图片", picture]))
+        pass
     except Exception as ex:
         await spic.finish("存图失败。" + "\n" + str(ex))
 
@@ -226,9 +225,3 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         os.remove(dir)
         await spic.finish(f"出错了。{await error_chat(ex)}")
     await spic.send("保存成功" + state["savepiv_warning"])
-
-
-@s_simpic.handle()
-async def _(bot: Bot, event: MessageEvent, args: V11Msg = CommandArg()):
-    if True:
-        await s_simpic.finish("simpic 并未开启喵。")

@@ -7,9 +7,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
 from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
-from .config import Config
-
-plugin_config = get_plugin_config(Config)
+from .config import p_config
 
 
 class Savepic_Admin(Permission):
@@ -27,8 +25,8 @@ class Savepic_Admin(Permission):
             return False
         return (
             f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{user_id}"
-            in plugin_config.savepic_admin
-            or user_id in plugin_config.savepic_admin  # 兼容旧配置
+            in p_config.savepic_admin
+            or user_id in p_config.savepic_admin  # 兼容旧配置
         )
 
 

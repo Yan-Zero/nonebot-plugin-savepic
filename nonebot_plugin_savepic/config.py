@@ -1,4 +1,6 @@
+from pydantic import Field
 from pydantic import BaseModel
+from nonebot import get_plugin_config
 
 
 class Config(BaseModel):
@@ -14,6 +16,8 @@ class Config(BaseModel):
 
     dashscope_api: str
     embedding_sqlurl: str
+    simpic_model: str = Field(default="")
+    p_model_path: str = Field(default="")
 
     notfound_with_jpg: bool = True
     """ randpic 的时候，尝试带 .jpg 再度检索向量 """
@@ -25,3 +29,6 @@ class Config(BaseModel):
     """ 合并转发中所能显示的最大页数 """
 
     chat_mode: bool = False
+
+
+p_config = get_plugin_config(Config)

@@ -9,10 +9,9 @@ from sqlalchemy.exc import DBAPIError
 
 
 from .core.sql import listpic
-from .config import Config
+from .config import p_config
 from .chat import error_chat
 
-p_config: Config = get_plugin_config(Config)
 s_listpic = on_command("listpic", priority=5)
 
 
