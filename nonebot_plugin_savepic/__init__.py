@@ -1,10 +1,11 @@
 from nonebot import get_plugin_config
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
+from nonebot.adapters.onebot import utils
+from nonebot.adapters.onebot.v11 import GROUP_ADMIN
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
-from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
@@ -33,23 +34,20 @@ from nonebot.internal.adapter import (
     MessageTemplate,
 )
 
-from .chat import error_chat
 from .rule import PIC_AMDIN
-from .rule import GROUP_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
 from .config import p_config
-from .command import cpic
 from .listpic import s_listpic
-from .randpic import url_to_image
+from .command import url_to_image
 from .core.sql import savepic
 from .core.sql import delete
 from .core.sql import regexp_pic
+from .core.utils import img2vec
 from .core.error import SameNameException
 from .core.error import SimilarPictureException
 from .core.error import SamePictureHashException
 from .core.fileio import write_pic, load_pic
-from .core.utils import img2vec
 
 
 __plugin_meta__ = PluginMetadata(
@@ -130,9 +128,9 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         if pic:
             await bot.send(event, V11Msg([pic.name, url_to_image(pic.url)]))
     except DBAPIError as ex:
-        await repic.finish(f"出错了。{await error_chat(ex.orig)}")
+        await repic.finish(f"出错了。{ex.orig}")
     except Exception as ex:
-        await repic.finish(f"出错了。{await error_chat(ex)}")
+        await repic.finish(f"出错了。{ex}")
 
 
 @spic.handle()
@@ -181,13 +179,25 @@ async def _(
 
 
 @spic.got("picture", ["图呢"])
-async def _(state: T_State, picture: V11Msg = Arg()):
+async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
     picture = picture.get("image")
     if not picture:
         await spic.finish("6，这也不是图啊")
 
     try:
         dir = await write_pic(picture[0].data["url"], p_config.savepic_dir)
+        img = await load_pic(dir)
+        ocr = await bot.ocr_image(image=utils.f2s(img))
+        if ocr and "texts" in ocr:
+            r = ""
+            for d in ocr["texts"]:
+                r += d["text"]
+            ocr = r.strip()
+            print(ocr)
+        else:
+            ocr = ""
+        if len(set(ocr)) <= 7:
+            ocr = ""
     except SamePictureHashException:
         pass
     except Exception as ex:
@@ -197,7 +207,7 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         await savepic(
             state["savepiv_filename"],
             dir,
-            img2vec(await load_pic(dir), state["savepiv_filename"]),
+            await img2vec(img, ocr),
             state["savepiv_group"],
             state["savepiv_ac"],
         )
@@ -209,7 +219,7 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         try:
             image = await load_pic(ex.url)
         except Exception as exc:
-            await spic.finish(f"出错了。{await error_chat(exc)}")
+            await spic.finish(f"出错了。{exc}")
 
         await spic.finish(
             V11Msg(
@@ -223,5 +233,5 @@ async def _(state: T_State, picture: V11Msg = Arg()):
         )
     except Exception as ex:
         os.remove(dir)
-        await spic.finish(f"出错了。{await error_chat(ex)}")
+        await spic.finish(f"出错了。{ex}")
     await spic.send("保存成功" + state["savepiv_warning"])

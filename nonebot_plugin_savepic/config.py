@@ -14,8 +14,10 @@ class Config(BaseModel):
     pinecone_index: str = "savepic"
     pinecone_environment: str
 
-    dashscope_api: str
     embedding_sqlurl: str
+    openai_apikey: str
+    openai_baseurl: str
+    embedding_model: str = "BAAI/bge-m3"
     simpic_model: str = Field(default="")
     p_model_path: str = Field(default="")
 
@@ -29,6 +31,7 @@ class Config(BaseModel):
     """ 合并转发中所能显示的最大页数 """
 
     chat_mode: bool = False
+    ocr_model: str = "gpt-4o-mini"
 
 
 p_config = get_plugin_config(Config)

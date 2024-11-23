@@ -40,7 +40,6 @@ async def write_pic(url: str, des_dir: str = None) -> str:
     file = path / hashlib.sha256(byte).hexdigest()
     if file.exists():
         raise SamePictureHashException(file.name, url)
-
     with open(file, "wb") as f:
         f.write(byte)
     return file.as_posix()

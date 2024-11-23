@@ -1,5 +1,4 @@
 import asyncpg
-import dashscope
 import sqlalchemy as sa
 
 from sqlalchemy.ext.asyncio.session import AsyncSession
@@ -10,11 +9,11 @@ from nonebot import get_driver
 from .error import SameNameException
 from .error import SimilarPictureException
 from .error import NoPictureException
-from ..model import PicData
-from .fileio import del_pic
-from .fileio import load_pic
 from .utils import word2vec
 from .utils import img2vec
+from .fileio import del_pic
+from .fileio import load_pic
+from ..model import PicData
 from ..config import p_config
 
 
@@ -40,7 +39,7 @@ async def update_vec(pic: PicData):
             pic.u_vec_text = False
             await _async_embedding_database.execute(
                 "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
-                str(word2vec(pic.name)),
+                str(await word2vec(pic.name)),
                 pic.id,
             )
             await db_session.merge(pic)
@@ -48,7 +47,7 @@ async def update_vec(pic: PicData):
             pic.u_vec_img = False
             await _async_embedding_database.execute(
                 "UPDATE savepic_img2vec SET embedding = $1 WHERE id = $2",
-                str(img2vec(await load_pic(pic.url))),
+                str(await img2vec(await load_pic(pic.url)), ""),
                 pic.id,
             )
         await db_session.commit()
@@ -91,9 +90,9 @@ async def savepic(
         if not collision_allow:
             if datas := await _async_embedding_database.fetch(
                 (
-                    "SELECT id, embedding <#> $1 AS similarity FROM savepic_word2vec "
-                    "WHERE embedding IS NOT NULL and embedding <#> $1 >= 0.91 "
-                    "ORDER BY similarity LIMIT 8;"
+                    "SELECT id, 1 - (embedding <=> $1) AS similarity FROM savepic_img2vec "
+                    "WHERE embedding IS NOT NULL and embedding <=> $1 < 0.08 "
+                    "ORDER BY similarity DESC LIMIT 8;"
                 ),
                 str(img_vec),
             ):
@@ -124,7 +123,7 @@ async def savepic(
                 "ON CONFLICT (id) DO UPDATE SET embedding = $2"
             ),
             pic.id,
-            str(word2vec(filename)),
+            str(await word2vec(filename)),
         )
         await _async_embedding_database.execute(
             (
@@ -141,15 +140,14 @@ async def simpic(img_vec: list[float], group: str = "globe", ignore_min: bool = 
     async with AsyncSession(_async_database) as db_session:
         if datas := await _async_embedding_database.fetch(
             (
-                "SELECT id, (embedding <#> $1) AS similarity FROM savepic_word2vec "
+                "SELECT id, 1 - (embedding <=> $1) AS similarity FROM savepic_img2vec "
                 "WHERE embedding IS NOT NULL "
-                + ("" if ignore_min else "and embedding <#> $1 >= 0.75 ")
-                + "ORDER BY similarity LIMIT 10;"
+                + ("" if ignore_min else "and embedding <=> $1 < 0.35 ")
+                + "ORDER BY similarity DESC LIMIT 10;"
             ),
             str(img_vec),
         ):
             for i in datas:
-                print(i)
                 while pic := await db_session.scalar(
                     select(PicData)
                     .where(sa.or_(PicData.group == group, PicData.group == "globe"))
@@ -181,7 +179,7 @@ async def rename(ori: str, des: str, s_group: str, d_group: str):
         pic.u_vec_text = False
         await _async_embedding_database.execute(
             "UPDATE savepic_word2vec SET embedding = $1 WHERE id = $2",
-            str(word2vec(des)),
+            str(await word2vec(des)),
             pic.id,
         )
         await db_session.merge(pic)
@@ -257,7 +255,7 @@ async def randpic(
                 "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
                 "ORDER BY embedding <#> $1 LIMIT 8;"
             ),
-            str(word2vec(name)),
+            str(await word2vec(name)),
         )
         if pic := await db_session.scalar(
             select(PicData)
@@ -275,7 +273,7 @@ async def randpic(
                     "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
                     "ORDER BY embedding <#> $1 LIMIT 8;"
                 ),
-                str(word2vec(name + ".jpg")),
+                str(await word2vec(name + ".jpg")),
             )
             if pic := await db_session.scalar(
                 select(PicData)
@@ -347,7 +345,6 @@ async def init_db():
         min_size=1,
         max_size=2,
     )
-    dashscope.api_key = p_config.dashscope_api
 
     try:
         metadata = sa.MetaData()
@@ -379,7 +376,7 @@ async def init_db():
             (
                 "CREATE TABLE savepic_word2vec (\n"
                 "  id bigserial PRIMARY KEY, \n"
-                "  embedding vector(1536)\n"
+                "  embedding vector(1024)\n"
                 ");"
             )
         )

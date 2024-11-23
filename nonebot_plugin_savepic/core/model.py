@@ -3,8 +3,11 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 import torch.nn.functional as F
-
+from PIL import Image
+from collections.abc import Iterable
 import importlib.util
+from torchvision import transforms
+from tqdm import tqdm
 
 if importlib.util.find_spec("flash_attn"):
     from flash_attn.modules.mha import MHA as FlashMHA
@@ -149,6 +152,7 @@ class ViTnLPE(nn.Module):
 
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+        self.joint = nn.Linear(output_dim * 2, output_dim)
 
     @torch.jit.ignore
     def set_grad_checkpointing(self, enable=True):
@@ -171,7 +175,7 @@ class ViTnLPE(nn.Module):
         x_masked_add = torch.cat([x0, x_masked], axis=1)
         return x_masked_add
 
-    def forward(self, x: torch.Tensor, mask_ratio: float = 0.0):
+    def forward(self, x: torch.Tensor, text: torch.Tensor, mask_ratio: float = 0.0):
         if self.use_flash_attention:
             x.to(torch.bfloat16)
         x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -197,8 +201,7 @@ class ViTnLPE(nn.Module):
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_post(x[:, 0, :])
-
-        if self.proj is not None:
-            x = x @ self.proj
-        # 归一化
-        return F.normalize(x, dim=-1)
+        return F.normalize(
+            self.joint(torch.cat((F.normalize(x @ self.proj, dim=-1), text), dim=-1)),
+            dim=-1,
+        )

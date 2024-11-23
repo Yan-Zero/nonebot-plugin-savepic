@@ -1,5 +1,4 @@
 from nonebot import on_command
-from nonebot import get_plugin_config
 from nonebot.params import CommandArg
 from nonebot.internal.adapter import Bot
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
@@ -10,7 +9,6 @@ from sqlalchemy.exc import DBAPIError
 
 from .core.sql import listpic
 from .config import p_config
-from .chat import error_chat
 
 s_listpic = on_command("listpic", priority=5)
 
@@ -25,7 +23,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
             reg, pages = reg[0], 1
         pages = int(pages)
     except Exception as ex:
-        await s_listpic.finish(f"出错了。{await error_chat(ex)}")
+        await s_listpic.finish(f"出错了。{ex}")
 
     group_id = (
         "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
@@ -71,6 +69,6 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         await s_listpic.send("\n".join(pics[:cpp]))
 
     except DBAPIError as ex:
-        await s_listpic.finish(f"出错了。{await error_chat(ex.orig)}")
+        await s_listpic.finish(f"出错了。{ex.orig}")
     except Exception as ex:
-        await s_listpic.finish(f"出错了。{await error_chat(ex)}")
+        await s_listpic.finish(f"出错了。{ex}")

@@ -2,10 +2,9 @@ from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.internal.adapter import Bot
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
+from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
-from .chat import error_chat
 from .rule import PIC_AMDIN
-from .rule import GROUP_ADMIN
 from .core.sql import rename
 from .core.error import NoPictureException
 from .core.error import SameNameException
@@ -131,5 +130,5 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     except SameNameException:
         await s_mvpic.finish("文件名重复")
     except Exception as ex:
-        await s_mvpic.finish(f"出错了。{await error_chat(ex)}")
+        await s_mvpic.finish(f"出错了。{ex}")
     await s_mvpic.finish("图片已重命名")

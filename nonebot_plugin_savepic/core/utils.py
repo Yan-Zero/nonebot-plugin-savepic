@@ -1,15 +1,21 @@
 import torch
+import asyncio
+import numpy as np
+import openai
+import base64
+import json
 from torchvision.transforms import transforms
 from PIL import Image
-from http import HTTPStatus
 from nonebot import get_driver
 from nonebot.log import logger
-from dashscope import TextEmbedding
 from io import BytesIO
 from .model import ViTnLPE
 from ..config import p_config
 
 img_model = None
+CLIENT = openai.AsyncOpenAI(
+    api_key=p_config.openai_apikey, base_url=p_config.openai_baseurl
+)
 
 
 @get_driver().on_startup
@@ -52,22 +58,74 @@ __t = transforms.Compose(
 )
 
 
-def img2vec(img: bytes, title: str = None) -> list | None:
+async def word2vec(word: str) -> list[float]:
+    return (
+        (await CLIENT.embeddings.create(input=word, model=p_config.embedding_model))
+        .data[0]
+        .embedding
+    )
+
+
+async def img2vec(img: bytes, title: str = "") -> list | None:
     """1024 D"""
     global p_config, __t, img_model
     if not p_config.simpic_model:
         return None
-    if p_config.simpic_model not in ["ViT/16"]:
+    if p_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
         raise NotImplementedError(f"Unsupported model: {p_config.simpic_model}")
-    return img_model(
-        __t(Image.open(BytesIO(img))).to(torch.bfloat16).unsqueeze(0)
-    ).tolist()
+    return (
+        await asyncio.to_thread(
+            img_model,
+            __t(Image.open(BytesIO(img))).to(torch.bfloat16).unsqueeze(0),
+            torch.Tensor(np.array(await word2vec(title)))
+            .to(torch.bfloat16)
+            .unsqueeze(0),
+        )
+    ).tolist()[0]
 
 
-def word2vec(word: str) -> list[float]:
-    resp = TextEmbedding.call(
-        model=TextEmbedding.Models.text_embedding_v2, input=word, text_type="query"
+async def ocr(img: bytes) -> str:
+    prompt = """Your response should be in the following format:
+```
+{
+    "text": "The text detected in the image.",
+    "score": "The confidence score of the text detection."
+}
+
+If the text detection fails, return an empty string.
+```
+{
+    "text": "",
+    "score": 0.0
+}
+```"""
+
+    ret = (
+        (
+            await CLIENT.chat.completions.create(
+                model=p_config.ocr_model,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "OCR:"},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"
+                                },
+                            },
+                        ],
+                    },
+                ],
+            )
+        )
+        .choices[0]
+        .message.content
     )
-    if resp.status_code != HTTPStatus.OK:
-        raise RuntimeError("Dashscope API Error")
-    return resp.output["embeddings"][0]["embedding"]
+    try:
+        return json.loads(ret.split("```")[1].split("```")[0].strip("`").strip("json"))
+    except Exception:
+        logger.error(f"OCR error: {ret}")
+        return {}

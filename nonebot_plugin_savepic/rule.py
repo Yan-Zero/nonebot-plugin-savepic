@@ -2,10 +2,8 @@
 This module is used to define the permission of the bot.
 """
 
-from nonebot import get_plugin_config
 from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
-from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
 from .config import p_config
 
