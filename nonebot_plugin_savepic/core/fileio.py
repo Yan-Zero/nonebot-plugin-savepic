@@ -79,11 +79,11 @@ async def write_pic(url: str, des_dir: str = None) -> str:
     file = path / hashlib.sha256(byte).hexdigest()
 
     async with AsyncSession(_async_database) as session:
-        if life := await session.get(PicLife, url):
+        if life := await session.get(PicLife, file.as_posix()):
             life.life += 1
             await session.commit()
             return file.as_posix()
-        life = PicLife(url=url)
+        life = PicLife(url=file.as_posix())
         session.add(life)
         await session.commit()
 

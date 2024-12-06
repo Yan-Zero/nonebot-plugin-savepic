@@ -11,7 +11,6 @@ from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
 from sqlalchemy.exc import DBAPIError
 from arclet.alconna import Alconna, Option, Args, CommandMeta
-import os
 import random
 from typing import (
     Any,
@@ -38,7 +37,7 @@ from .rule import PIC_AMDIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
 from .config import plugin_config
-from .listpic import s_listpic
+from .listpic import UPLOADER
 from .command import url_to_image
 from .core.sql import savepic
 from .core.sql import delete
@@ -64,7 +63,6 @@ __plugin_meta__ = PluginMetadata(
     type="application",
     supported_adapters=["~onebot.v11"],
 )
-
 
 repic = on_command("repic", priority=5)
 spic = on_command("savepic", priority=5)
@@ -163,7 +161,14 @@ async def _(
     state["savepiv_ac"] = command.ac is not None
 
     if command.d:
-        if not (await PIC_AMDIN(bot, event) or await GROUP_ADMIN(bot, event)):
+        if not (
+            await PIC_AMDIN(bot, event)
+            or await GROUP_ADMIN(bot, event)
+            or UPLOADER.get(
+                state["savepiv_filename"] + ":" + state["savepiv_group"], None
+            )
+            == f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
+        ):
             await spic.finish("没有权限")
         try:
             await delete(filename, state["savepiv_group"])
@@ -179,7 +184,7 @@ async def _(
 
 
 @spic.got("picture", ["图呢"])
-async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
+async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     picture = picture.get("image")
     if not picture:
         await spic.finish("6，这也不是图啊")
@@ -221,7 +226,6 @@ async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
             image = await load_pic(ex.url)
         except Exception as exc:
             await spic.finish(f"出错了。{exc}")
-
         await spic.finish(
             V11Msg(
                 [
@@ -236,3 +240,6 @@ async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
     await spic.send("保存成功" + state["savepiv_warning"])
+    UPLOADER[state["savepiv_filename"] + ":" + state["savepiv_group"]] = (
+        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
+    )

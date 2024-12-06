@@ -6,10 +6,10 @@ from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from sqlalchemy.exc import DBAPIError
 
-
 from .core.sql import listpic
 from .config import plugin_config
 
+UPLOADER: dict[str, str] = {}
 s_listpic = on_command("listpic", priority=5)
 
 
