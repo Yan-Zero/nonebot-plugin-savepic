@@ -37,17 +37,17 @@ from nonebot.internal.adapter import (
 from .rule import PIC_AMDIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
-from .config import p_config
+from .config import plugin_config
 from .listpic import s_listpic
 from .command import url_to_image
 from .core.sql import savepic
 from .core.sql import delete
 from .core.sql import regexp_pic
 from .core.utils import img2vec
+from .core.utils import ocr as ocr_image
 from .core.error import SameNameException
 from .core.error import SimilarPictureException
-from .core.error import SamePictureHashException
-from .core.fileio import write_pic, load_pic
+from .core.fileio import write_pic, load_pic, del_pic
 
 
 __plugin_meta__ = PluginMetadata(
@@ -185,21 +185,22 @@ async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
         await spic.finish("6，这也不是图啊")
 
     try:
-        dir = await write_pic(picture[0].data["url"], p_config.savepic_dir)
+        dir = await write_pic(picture[0].data["url"], plugin_config.savepic_dir)
         img = await load_pic(dir)
-        ocr = await bot.ocr_image(image=utils.f2s(img))
-        if ocr and "texts" in ocr:
-            r = ""
-            for d in ocr["texts"]:
-                r += d["text"]
-            ocr = r.strip()
-            print(ocr)
+        ocr = await ocr_image(img)
+        if "text" in ocr:
+            ocr = ocr["text"]
         else:
-            ocr = ""
-        if len(set(ocr)) <= 7:
-            ocr = ""
-    except SamePictureHashException:
-        pass
+            ocr = await bot.ocr_image(image=utils.f2s(img))
+            if ocr and "texts" in ocr:
+                r = ""
+                for d in ocr["texts"]:
+                    r += d["text"]
+                ocr = r.strip()
+            else:
+                ocr = ""
+            if len(set(ocr)) <= 10:
+                ocr = ""
     except Exception as ex:
         await spic.finish("存图失败。" + "\n" + str(ex))
 
@@ -212,10 +213,10 @@ async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
             state["savepiv_ac"],
         )
     except SameNameException:
-        os.remove(dir)
+        await del_pic(dir)
         await spic.finish("文件名重复")
     except SimilarPictureException as ex:
-        os.remove(dir)
+        await del_pic(dir)
         try:
             image = await load_pic(ex.url)
         except Exception as exc:
@@ -232,6 +233,6 @@ async def _(bot: Bot, state: T_State, picture: V11Msg = Arg()):
             )
         )
     except Exception as ex:
-        os.remove(dir)
+        await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
     await spic.send("保存成功" + state["savepiv_warning"])

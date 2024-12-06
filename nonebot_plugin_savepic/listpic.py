@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 
 
 from .core.sql import listpic
-from .config import p_config
+from .config import plugin_config
 
 s_listpic = on_command("listpic", priority=5)
 
@@ -33,8 +33,8 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         if not pics:
             return
 
-        cpp = max(p_config.count_per_page_in_list, 1)
-        if p_config.forward_when_listpic:
+        cpp = max(plugin_config.count_per_page_in_list, 1)
+        if plugin_config.forward_when_listpic:
             message = []
             for i in range(len(pics) // cpp + 1):
                 if pics[i * cpp : (i + 1) * cpp]:

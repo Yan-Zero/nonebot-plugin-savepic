@@ -14,18 +14,12 @@ from .utils import img2vec
 from .fileio import del_pic
 from .fileio import load_pic
 from ..model import PicData
-from ..config import p_config
+from ..config import plugin_config
 
 
 gdriver = get_driver()
 _async_database = None
 _async_embedding_database = None
-
-
-def AsyncDatabase():
-    if not _async_database:
-        raise RuntimeError("Database is not initialized")
-    return _async_database
 
 
 async def update_vec(pic: PicData):
@@ -195,7 +189,7 @@ async def delete(filename: str, group: str):
         )
         if not pic:
             raise NoPictureException(filename)
-        del_pic(pic.url)
+        await del_pic(pic.url)
         pic.name = ""
         await db_session.merge(pic)
         await _async_embedding_database.execute(
@@ -266,7 +260,7 @@ async def randpic(
         ):
             return pic, "（语义向量相似度检索）"
 
-        if p_config.notfound_with_jpg:
+        if plugin_config.notfound_with_jpg:
             datas = await _async_embedding_database.fetch(
                 (
                     "SELECT id FROM savepic_word2vec "
@@ -312,7 +306,10 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
 
     pages = max(pages - 1, 0)
     _count = min(
-        max(1, p_config.count_per_page_in_list * p_config.max_page_in_listpic), 1000
+        max(
+            1, plugin_config.count_per_page_in_list * plugin_config.max_page_in_listpic
+        ),
+        1000,
     )
 
     async with AsyncSession(_async_database) as db_session:
@@ -322,7 +319,7 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
             .where(PicData.name != "")
             .where(PicData.name.regexp_match(reg, flags="i"))
             .order_by(PicData.name)
-            .offset(pages * p_config.count_per_page_in_list)
+            .offset(pages * plugin_config.count_per_page_in_list)
             .limit(_count)
         )
         if pics:
@@ -333,15 +330,17 @@ async def init_db():
     # check if the table exists
     global _async_database, _async_embedding_database
     _async_database = create_async_engine(
-        p_config.savepic_sqlurl,
+        plugin_config.savepic_sqlurl,
         future=True,
         pool_size=2,
         max_overflow=0,
     )
-    if p_config.embedding_sqlurl.startswith("postgresql+asyncpg"):
-        p_config.embedding_sqlurl = "postgresql" + p_config.embedding_sqlurl[18:]
+    if plugin_config.embedding_sqlurl.startswith("postgresql+asyncpg"):
+        plugin_config.embedding_sqlurl = (
+            "postgresql" + plugin_config.embedding_sqlurl[18:]
+        )
     _async_embedding_database = await asyncpg.create_pool(
-        p_config.embedding_sqlurl,
+        plugin_config.embedding_sqlurl,
         min_size=1,
         max_size=2,
     )
@@ -402,7 +401,7 @@ async def init_db():
 
 @gdriver.on_startup
 async def _():
-    if not p_config.savepic_sqlurl:
+    if not plugin_config.savepic_sqlurl:
         raise Exception("请配置 savepic_sqlurl")
 
     await init_db()

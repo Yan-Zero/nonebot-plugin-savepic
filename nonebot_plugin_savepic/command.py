@@ -13,12 +13,13 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 
-from .config import p_config
+from .config import plugin_config
 from .core.sql import simpic
 from .core.sql import randpic
 from .core.sql import countpic
 from .core.sql import select_pic
 from .core.utils import img2vec
+from .core.utils import word2vec
 from .core.utils import ocr as ocr_image
 from .core.fileio import load_pic
 
@@ -103,7 +104,7 @@ __lock__ = asyncio.Lock()
 async def _(bot: Bot, event: Event, args: Message = CommandArg()):
     if __lock__.locked():
         await s_simpic.finish("相似图片搜索中，请稍后再试喵~")
-    if p_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
+    if plugin_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
         await s_simpic.finish("当前配置的模型不支持相似图片搜索喵~")
     try:
         picture = args.get("image")
@@ -132,6 +133,33 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
             "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
         )
         sim, pic = await simpic(vec, group_id, True)
+    except Exception as ex:
+        await s_simpic.finish(str(ex))
+
+    if pic:
+        ret = []
+        if event.reply:
+            ret.append(V11Seg.reply(event.reply.message_id))
+        ret.append(f"{pic.name}\n(相似性：{'%.4g' % (min(sim * 100, 100.0))}%)")
+        ret.append(url_to_image(pic.url))
+        await s_simpic.send(V11Msg(ret))
+    else:
+        await s_simpic.send("没有找到相似的图片喵~")
+
+
+clip = on_command("clip", priority=5)
+
+
+@clip.handle()
+async def _(bot: Bot, event: Event, args: Message = CommandArg()):
+    if plugin_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
+        await s_simpic.finish("当前配置的模型不支持相似图片搜索喵~")
+    name = args.extract_plain_text().strip()
+    group_id = (
+        "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
+    )
+    try:
+        sim, pic = await simpic(await word2vec(name), group_id, True)
     except Exception as ex:
         await s_simpic.finish(str(ex))
 

@@ -5,7 +5,7 @@ This module is used to define the permission of the bot.
 from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
 
-from .config import p_config
+from .config import plugin_config
 
 
 class Savepic_Admin(Permission):
@@ -23,8 +23,8 @@ class Savepic_Admin(Permission):
             return False
         return (
             f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{user_id}"
-            in p_config.savepic_admin
-            or user_id in p_config.savepic_admin  # 兼容旧配置
+            in plugin_config.savepic_admin
+            or user_id in plugin_config.savepic_admin  # 兼容旧配置
         )
 
 

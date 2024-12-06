@@ -1,4 +1,3 @@
-from io import BytesIO
 from sqlalchemy import TEXT
 from sqlalchemy import BOOLEAN
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,3 +22,16 @@ class PicData(Model):
     """ 图片目录 """
     u_vec_img: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
     u_vec_text: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
+
+
+class PicLife(Model):
+    """图片生命周期"""
+
+    __tablename__ = "piclife"
+
+    __table_args__ = {"extend_existing": True}
+
+    url: Mapped[str] = mapped_column(TEXT, primary_key=True)
+    """ 图片目录 """
+    life: Mapped[int] = mapped_column(BOOLEAN, nullable=False, default=0)
+    """ 图片生命周期 """

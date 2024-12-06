@@ -1,18 +1,57 @@
 import hashlib
 import pathlib
-
 import httpx
+import sqlalchemy as sa
 
-from .error import SamePictureHashException
+from sqlalchemy.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from nonebot import get_driver
+from ..model import PicLife
+from ..config import plugin_config
+
+# 异步连接到 plugin_config.local_sqlite_path
+_async_database = None
 
 
-def del_pic(url: str | pathlib.Path):
+@get_driver().on_startup
+async def init_db():
+    # check if the table exists
+    global _async_database
+    _async_database = create_async_engine(
+        plugin_config.local_sqlite_path,
+    )
+    try:
+        metadata = sa.MetaData()
+        sa.Table(
+            "piclife",
+            metadata,
+            sa.Column("url", sa.Text, primary_key=True),
+            sa.Column("life", sa.Integer, default=0),
+        )
+        async with _async_database.begin() as conn:
+            await conn.run_sync(metadata.create_all)
+    except Exception as ex:
+        print(ex)
+
+
+async def del_pic(url: str | pathlib.Path):
+    if isinstance(url, pathlib.Path):
+        url = url.as_posix()
     if url.startswith("http"):
         return
     if isinstance(url, str):
         _ = pathlib.Path(url)
     else:
         _ = url
+
+    async with AsyncSession(_async_database) as session:
+        if life := await session.get(PicLife, url):
+            if life.life > 0:
+                life.life -= 1
+                await session.commit()
+                return
+            await session.delete(life)
+            await session.commit()
     if _.exists():
         _.unlink()
 
@@ -38,8 +77,16 @@ async def write_pic(url: str, des_dir: str = None) -> str:
 
     byte = await load_pic(url)
     file = path / hashlib.sha256(byte).hexdigest()
-    if file.exists():
-        raise SamePictureHashException(file.name, url)
+
+    async with AsyncSession(_async_database) as session:
+        if life := await session.get(PicLife, url):
+            life.life += 1
+            await session.commit()
+            return file.as_posix()
+        life = PicLife(url=url)
+        session.add(life)
+        await session.commit()
+
     with open(file, "wb") as f:
         f.write(byte)
     return file.as_posix()

@@ -32,6 +32,7 @@ class Config(BaseModel):
 
     chat_mode: bool = False
     ocr_model: str = "gpt-4o-mini"
+    local_sqlite_path: str = Field(default="sqlite+aiosqlite:///./savepic.db")
 
 
-p_config = get_plugin_config(Config)
+plugin_config = get_plugin_config(Config)
