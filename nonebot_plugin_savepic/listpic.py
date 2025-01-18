@@ -32,6 +32,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         pics = await listpic(reg, group_id, pages=pages)
         if not pics:
             return
+        pics = [pic[0] + ("" if pic[1] else " ⭐") for pic in pics]
 
         cpp = max(plugin_config.count_per_page_in_list, 1)
         if plugin_config.forward_when_listpic:

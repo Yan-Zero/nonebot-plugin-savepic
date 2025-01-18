@@ -71,6 +71,7 @@ a_spic = Alconna(
     Option("-d", help_text="删除图片"),
     Option("-g", help_text="全局"),
     Option("-ac", help_text="允许相似碰撞"),
+    Option("-nocr", help_text="跳过图片OCR"),
     Args.filename[str],
     meta=CommandMeta(description="保存图片，默认保存到本群"),
 )
@@ -175,6 +176,10 @@ async def _(
         except Exception as ex:
             await spic.finish(str(ex))
         await spic.finish("图片已删除" + state["savepiv_warning"])
+    if command.nocr:
+        state["savepiv_nocr"] = False
+    else:
+        state["savepiv_nocr"] = True
 
     picture = event.message.get("image")
     if not picture and event.reply:
@@ -192,21 +197,29 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     try:
         dir = await write_pic(picture[0].data["url"], plugin_config.savepic_dir)
         img = await load_pic(dir)
-        ocr = await ocr_image(img)
-        if "text" in ocr:
-            ocr = ocr["text"]
-        else:
-            ocr = await bot.ocr_image(image=utils.f2s(img))
-            if ocr and "texts" in ocr:
-                r = ""
-                for d in ocr["texts"]:
-                    r += d["text"]
-                ocr = r.strip()
+        if state["savepiv_nocr"]:
+            try:
+                ocr = await ocr_image(img)
+            except Exception:
+                ocr = {}
+
+            if "text" in ocr:
+                ocr = ocr["text"]
             else:
-                ocr = ""
-            if len(set(ocr)) <= 10:
-                ocr = ""
+                ocr = await bot.ocr_image(image=utils.f2s(img))
+                if ocr and "texts" in ocr:
+                    r = ""
+                    for d in ocr["texts"]:
+                        r += d["text"]
+                    ocr = r.strip()
+                else:
+                    ocr = ""
+                if len(set(ocr)) <= 10:
+                    ocr = ""
+        else:
+            ocr = ""
     except Exception as ex:
+        await del_pic(dir)
         await spic.finish("存图失败。" + "\n" + str(ex))
 
     try:

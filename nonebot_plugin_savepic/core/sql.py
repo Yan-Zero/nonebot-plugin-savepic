@@ -299,7 +299,9 @@ async def countpic(reg: str, group: str = "globe") -> int:
         return 0
 
 
-async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
+async def listpic(
+    reg: str, group: str = "globe", pages: int = 0
+) -> list[tuple[str, bool]]:
     reg = reg.strip()
     if not reg:
         reg = ".*"
@@ -323,7 +325,7 @@ async def listpic(reg: str, group: str = "globe", pages: int = 0) -> list[str]:
             .limit(_count)
         )
         if pics:
-            return [str(pic.name) for pic in pics]
+            return [(str(pic.name), pic.group == "globe") for pic in pics]
 
 
 async def init_db():

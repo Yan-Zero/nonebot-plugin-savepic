@@ -113,7 +113,12 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         if not picture:
             await s_simpic.finish("请发送图片后再使用该指令喵~")
         img = await load_pic(picture[0].data["url"])
-        ocr = await ocr_image(img)
+
+        try:
+            ocr = await ocr_image(img)
+        except Exception:
+            ocr = {}
+
         if "text" in ocr:
             ocr = ocr["text"]
         else:

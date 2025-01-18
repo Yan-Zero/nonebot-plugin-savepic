@@ -1122,13 +1122,14 @@ async def img2vec(img: bytes, title: str = "") -> list | None:
     ).tolist()[0]
 
 
-async def ocr(img: bytes) -> str:
+async def ocr(img: bytes) -> dict:
     prompt = """Your response should be in the following format:
 ```
 {
     "text": "The text detected in the image.",
     "score": "The confidence score of the text detection."
 }
+```
 
 If the text detection fails, return an empty string.
 ```
