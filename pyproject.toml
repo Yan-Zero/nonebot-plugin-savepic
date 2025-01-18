@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "nonebot-plugin-savepic"
-version = "0.4.0"
+version = "0.4.1"
 description = "保存表情包（语录）与随机出图"
 authors = ["Yan <1964649083@qq.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "nonebot_plugin_savepic"}]
+packages = [{ include = "nonebot_plugin_savepic" }]
 homepage = "https://github.com/Yan-Zero/nonebot-plugin-savepic"
 
 [tool.poetry.dependencies]
