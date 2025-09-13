@@ -333,6 +333,7 @@ async def init_db():
     global _async_database, _async_embedding_database
     _async_database = create_async_engine(
         plugin_config.savepic_sqlurl,
+        pool_pre_ping=True,
         future=True,
         pool_size=2,
         max_overflow=0,

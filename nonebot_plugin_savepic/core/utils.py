@@ -1129,7 +1129,6 @@ async def ocr(img: bytes) -> dict:
     "text": "The text detected in the image.",
     "score": "The confidence score of the text detection."
 }
-```
 
 If the text detection fails, return an empty string.
 ```

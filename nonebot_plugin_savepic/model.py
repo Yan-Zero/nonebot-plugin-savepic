@@ -1,5 +1,6 @@
 from sqlalchemy import TEXT
 from sqlalchemy import BOOLEAN
+from sqlalchemy import INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -33,5 +34,5 @@ class PicLife(Model):
 
     url: Mapped[str] = mapped_column(TEXT, primary_key=True)
     """ 图片目录 """
-    life: Mapped[int] = mapped_column(BOOLEAN, nullable=False, default=0)
+    life: Mapped[int] = mapped_column(INTEGER, nullable=False, default=0)
     """ 图片生命周期 """
