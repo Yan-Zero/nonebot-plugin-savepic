@@ -98,7 +98,6 @@ _✨ 一个存取图片的插件 ✨_
 | pinecone_apikey | 否 | 无 | pinecone 的 Key |
 | pinecone_environment | 否 | 无 | pinecone 的 enviroment，是数据库的属性之一 |
 | pinecone_index | 否 | savepic | 同上。 |
-| dashscope_api | 否 | 无 | dashscope 的 APIKey。 用于开启基于语义的相似度检索功能 |
 
 ## 🎉 使用
 

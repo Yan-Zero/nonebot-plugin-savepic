@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
-from nonebot import get_driver
+from nonebot import get_driver, logger
 
 from .error import SameNameException
 from .error import SimilarPictureException
@@ -27,7 +27,9 @@ async def update_vec(pic: PicData):
         return
     if not pic.u_vec_text and not pic.u_vec_img:
         return
-
+    if not _async_embedding_database:
+        logger.warning("未配置 embedding_sqlurl，无法使用向量更新功能")
+        return
     async with AsyncSession(_async_database) as db_session:
         if pic.u_vec_text:
             pic.u_vec_text = False
@@ -41,7 +43,7 @@ async def update_vec(pic: PicData):
             pic.u_vec_img = False
             await _async_embedding_database.execute(
                 "UPDATE savepic_img2vec SET embedding = $1 WHERE id = $2",
-                str(await img2vec(await load_pic(pic.url)), ""),
+                str(await img2vec(await load_pic(pic.url))),
                 pic.id,
             )
         await db_session.commit()
@@ -70,6 +72,9 @@ async def savepic(
     group_id: str = "globe",
     collision_allow: bool = False,
 ):
+    if not _async_embedding_database:
+        logger.warning("未配置 embedding_sqlurl，无法使用保存功能")
+        return
     pic = PicData(
         group=group_id, name=filename, url=url, u_vec_img=False, u_vec_text=False
     )
@@ -102,6 +107,8 @@ async def savepic(
                         raise SimilarPictureException(
                             pic.name, i["similarity"], pic.url
                         )
+        if not pic:
+            raise Exception("保存图片失败")
 
         empty = await db_session.scalar(select(PicData).where(PicData.name == ""))
         if empty:
@@ -131,6 +138,9 @@ async def savepic(
 
 
 async def simpic(img_vec: list[float], group: str = "globe", ignore_min: bool = False):
+    if not _async_embedding_database:
+        logger.warning("未配置 embedding_sqlurl，无法使用相似图片功能")
+        return None, None
     async with AsyncSession(_async_database) as db_session:
         if datas := await _async_embedding_database.fetch(
             (
@@ -153,6 +163,9 @@ async def simpic(img_vec: list[float], group: str = "globe", ignore_min: bool = 
 
 
 async def rename(ori: str, des: str, s_group: str, d_group: str):
+    if not _async_embedding_database:
+        logger.warning("未配置 embedding_sqlurl，无法使用重命名功能")
+        return
     async with AsyncSession(_async_database) as db_session:
         pic = await db_session.scalar(
             select(PicData)
@@ -181,6 +194,9 @@ async def rename(ori: str, des: str, s_group: str, d_group: str):
 
 
 async def delete(filename: str, group: str):
+    if not _async_embedding_database:
+        logger.warning("未配置 embedding_sqlurl，无法使用删除功能")
+        return
     async with AsyncSession(_async_database) as db_session:
         pic = await db_session.scalar(
             select(PicData).where(
@@ -198,7 +214,7 @@ async def delete(filename: str, group: str):
         await db_session.commit()
 
 
-async def regexp_pic(reg: str, group: str = "globe") -> PicData:
+async def regexp_pic(reg: str, group: str = "globe") -> PicData | None:
     reg = reg.strip()
     if not reg:
         reg = ".*"
@@ -215,8 +231,8 @@ async def regexp_pic(reg: str, group: str = "globe") -> PicData:
 
 
 async def randpic(
-    name: str, group: str = "globe", vector: bool = False
-) -> tuple[PicData, str]:
+    name: str, group: str = "globe", vector: bool = False, threshold: float = 0.45
+) -> tuple[PicData | None, str]:
     name = name.strip().replace("%", r"\%").replace("_", r"\_")
 
     async with AsyncSession(_async_database) as db_session:
@@ -243,10 +259,13 @@ async def randpic(
         if not vector:
             return None, ""
 
+        if not _async_embedding_database:
+            return None, ""
+
         datas = await _async_embedding_database.fetch(
             (
                 "SELECT id FROM savepic_word2vec "
-                "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
+                f"WHERE embedding IS NOT NULL and embedding <=> $1 <= {threshold:.2f} "
                 "ORDER BY embedding <#> $1 LIMIT 8;"
             ),
             str(await word2vec(name)),
@@ -264,7 +283,7 @@ async def randpic(
             datas = await _async_embedding_database.fetch(
                 (
                     "SELECT id FROM savepic_word2vec "
-                    "WHERE embedding IS NOT NULL and embedding <=> $1 <= 0.45 "
+                    f"WHERE embedding IS NOT NULL and embedding <=> $1 <= {threshold:.2f} "
                     "ORDER BY embedding <#> $1 LIMIT 8;"
                 ),
                 str(await word2vec(name + ".jpg")),
@@ -278,7 +297,7 @@ async def randpic(
             ):
                 return pic, "（语义向量相似度检索）"
 
-        return None, False
+        return None, ""
 
 
 async def countpic(reg: str, group: str = "globe") -> int:
@@ -291,7 +310,7 @@ async def countpic(reg: str, group: str = "globe") -> int:
                 select(PicData)
                 .where(sa.or_(PicData.group == group, PicData.group == "globe"))
                 .where(PicData.name != "")
-                .where(PicData.name.regexp_match(reg, flags="i"))
+                .where(PicData.name.regexp_match(reg, flags="i"))  # type: ignore
             )
         )
         if pics:
@@ -326,6 +345,7 @@ async def listpic(
         )
         if pics:
             return [(str(pic.name), pic.group == "globe") for pic in pics]
+        return []
 
 
 async def init_db():
@@ -364,6 +384,9 @@ async def init_db():
             await conn.run_sync(metadata.create_all)
     except Exception as ex:
         print(ex)
+
+    if not _async_embedding_database:
+        return
 
     if not (
         await _async_embedding_database.fetch(

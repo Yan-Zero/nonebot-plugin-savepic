@@ -1,16 +1,22 @@
-import torch
 import asyncio
 import numpy as np
 import openai
 import base64
 import json
-from torchvision.transforms import transforms
+
 from PIL import Image
 from nonebot import get_driver
 from nonebot.log import logger
 from io import BytesIO
 from .model import ViTnLPE
 from ..config import plugin_config
+
+try:
+    import torch  # type: ignore
+    from torchvision.transforms import transforms  # type: ignore
+except ImportError:
+    torch = None
+    transforms = None
 
 img_model = None
 CLIENT = openai.AsyncOpenAI(
@@ -1129,6 +1135,7 @@ async def ocr(img: bytes) -> dict:
     "text": "The text detected in the image.",
     "score": "The confidence score of the text detection."
 }
+```
 
 If the text detection fails, return an empty string.
 ```
