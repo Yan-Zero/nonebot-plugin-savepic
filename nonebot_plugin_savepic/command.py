@@ -2,19 +2,21 @@ import traceback
 
 from pathlib import Path
 from nonebot import on_command
+from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot.plugin import on_endswith
 from nonebot.params import CommandArg
 from nonebot.adapters import Bot
 from nonebot.adapters import Message
 from nonebot.adapters import Event
+from nonebot_plugin_alconna import on_alconna
+from nonebot.adapters.onebot.v11 import GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 
-from .core.sql import simpic
-from .core.sql import randpic
-from .core.sql import countpic
-from .core.sql import select_pic
+from .rule import PIC_ADMIN
+from .mvpic import INVALID_FILENAME_CHARACTERS
+from .core.sql import simpic, delete, randpic, countpic, select_pic, check_uploader
 from .core.utils import img2vec
 from .core.fileio import load_pic
 
@@ -117,3 +119,57 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         await s_simpic.send(V11Msg(ret))
     else:
         await s_simpic.send("没有找到相似的图片喵~")
+
+
+# delpic = on_command("delpic", priority=5)
+rmpic = on_alconna(
+    Alconna(
+        "rmpic",
+        Option("-g", help_text="是否为全局图片，需要权限。"),
+        Args.filename[str],  # type: ignore
+        meta=CommandMeta(
+            description="删除已保存的图片。管理员和上传者可删除群内图片。"
+        ),
+    ),
+    priority=5,
+    block=True,
+)
+
+
+@rmpic.handle()
+async def _(bot: Bot, event: V11GME, command: Arparma):
+    filename = command.filename
+    if not isinstance(filename, str):
+        await rmpic.finish("文件名无效")
+    for c in INVALID_FILENAME_CHARACTERS:
+        filename = filename.replace(c, "-")
+    if not filename.endswith((".jpg", ".png", ".gif")):
+        filename += ".jpg"
+
+    user = (
+        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
+    )
+
+    if not (
+        await PIC_ADMIN(bot, event)
+        or await GROUP_ADMIN(bot, event)
+        or await check_uploader(
+            filename,
+            f"qq_group:{event.group_id}",
+            user,
+        )
+    ):
+        await rmpic.finish("没有权限")
+
+    scope = f"qq_group:{event.group_id}"
+    # 如果有 -g 选项
+    if command.g:
+        if not await PIC_ADMIN(bot, event):
+            await rmpic.send("你的 -g 选项没有用哟")
+        else:
+            scope = "globe"
+    try:
+        await delete(filename, scope)
+    except Exception as ex:
+        await rmpic.finish(str(ex))
+    await rmpic.finish("删除成功")

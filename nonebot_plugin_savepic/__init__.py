@@ -9,8 +9,6 @@ from typing import (
 )
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
-from nonebot.adapters.onebot import utils
-from nonebot.adapters.onebot.v11 import GROUP_ADMIN
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
@@ -23,6 +21,7 @@ from nonebot.typing import (
 )
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot.consts import ARG_KEY
+from nonebot_plugin_alconna import on_alconna
 from nonebot.internal.params import Depends
 from nonebot.internal.adapter import (
     Bot,
@@ -31,17 +30,13 @@ from nonebot.internal.adapter import (
     MessageSegment,
     MessageTemplate,
 )
-from nonebot_plugin_alconna import (
-    on_alconna,
-    Match as AMatch,
-)
 
 from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
 from .config import plugin_config
 from .command import url_to_image
-from .core.sql import savepic, delete, regexp_pic, check_uploader
+from .core.sql import savepic, regexp_pic
 from .core.utils import img2vec
 from .core.error import SameNameException
 from .core.error import SimilarPictureException
@@ -67,10 +62,9 @@ repic = on_command("repic", priority=5)
 spic = on_alconna(
     Alconna(
         "savepic",
-        Option("-d", help_text="删除图片"),
         Option("-g", help_text="全局"),
         Option("-ac", help_text="允许相似碰撞"),
-        Args["filename":str],  # type: ignore
+        Args.filename[str],  # type: ignore
         meta=CommandMeta(description="保存图片，默认保存到本群"),
     )
 )
@@ -130,40 +124,6 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         await repic.finish(f"出错了。{ex}")
 
 
-@spic.assign("-d")
-async def _(bot: Bot, event: GroupMessageEvent, filename: AMatch[str], arp: Arparma):
-    """删除图片"""
-    if not filename.available:
-        await spic.finish("没有指定要删除的图片")
-    # 构造上传者名字
-    user = (
-        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
-    )
-
-    if not (
-        await PIC_ADMIN(bot, event)
-        or await GROUP_ADMIN(bot, event)
-        or await check_uploader(
-            filename.result,
-            f"qq_group:{event.group_id}",
-            user,
-        )
-    ):
-        await spic.finish("没有权限")
-
-    scope = f"qq_group:{event.group_id}"
-    # 如果有 -g 选项
-    if arp.g:
-        if not await PIC_ADMIN(bot, event):
-            await spic.send("你的 -g 选项没有用哟")
-        else:
-            scope = "globe"
-    try:
-        await delete(filename.result, scope)
-    except Exception as ex:
-        await spic.finish(str(ex))
-
-
 @spic.handle()
 async def _(
     bot: Bot,
@@ -175,6 +135,14 @@ async def _(
     if not command.matched:
         await spic.finish(str(command.error_info))
 
+    filename = command.filename
+    if not isinstance(filename, str):
+        await spic.finish("文件名无效")
+    for c in INVALID_FILENAME_CHARACTERS:
+        filename = filename.replace(c, "-")
+    if not filename.endswith((".jpg", ".png", ".gif")):
+        filename += ".jpg"
+
     state["savepiv_group"] = (
         "globe"
         if command.g and await PIC_ADMIN(bot, event)
@@ -184,14 +152,6 @@ async def _(
     if command.g and not await PIC_ADMIN(bot, event):
         await spic.send("你的 -g 选项没有用哟")
 
-    filename = command.filename
-    if not isinstance(filename, str):
-        await spic.finish("文件名无效")
-
-    for c in INVALID_FILENAME_CHARACTERS:
-        filename = filename.replace(c, "-")
-    if not filename.endswith((".jpg", ".png", ".gif")):
-        filename += ".jpg"
     state["savepiv_filename"] = filename
     state["savepiv_ac"] = command.ac is not None
 

@@ -147,8 +147,7 @@ async def savepic(
                     row["name"], row["similarity"], row["url"]
                 )
 
-        sql = """WITH 
-take AS (
+        sql = """WITH take AS (
   SELECT ctid
   FROM picdata
   WHERE name = ''
@@ -160,7 +159,7 @@ upd_empty AS (
   SET name     = $1,
       scope    = ARRAY[$2]::text[],
       url      = $3,
-      vec      = $4::halfvec
+      vec      = $4::halfvec,
       uploader = $5
   FROM take t
   WHERE p.ctid = t.ctid
@@ -180,7 +179,7 @@ ins AS (
                   WHEN NOT (EXCLUDED.scope[1] = ANY(picdata.scope)) THEN array_append(picdata.scope, EXCLUDED.scope[1])
                   ELSE picdata.scope
                END,
-    vec      = COALESCE(EXCLUDED.vec, picdata.vec)
+    vec      = COALESCE(EXCLUDED.vec, picdata.vec),
     uploader = EXCLUDED.uploader
   RETURNING picdata.name
 )
@@ -196,7 +195,7 @@ LIMIT 1;"""
                 filename,
                 scope,
                 url,
-                vec.astype(np.float16).tolist() if vec is not None else None,
+                str(vec.astype(np.float16).tolist()) if vec is not None else None,
                 uploader,
             )
             if filename != name:
