@@ -6,12 +6,10 @@ from nonebot.log import logger
 
 from ..config import plugin_config
 
-NULL_EMB: np.ndarray = np.zeros(2048)
 
-
-async def word2vec(word: str) -> np.ndarray:
+async def word2vec(word: str) -> np.ndarray | None:
     if not word:
-        return NULL_EMB
+        return None
     async with httpx.AsyncClient() as client:
         try:
             rsp = await client.post(
@@ -32,20 +30,16 @@ async def word2vec(word: str) -> np.ndarray:
             data = rsp.json()
         except Exception as e:
             logger.warning(f"Network seems down, cannot access internet: {e}")
-            return NULL_EMB
+            return None
     try:
-        return np.array(data["data"][0]["embedding"])
+        return np.array(data["data"]["embedding"])
     except Exception as e:
         logger.error(f"Error while embedding word: {word}, {e}")
-        return NULL_EMB
+        return None
 
 
-async def img2vec(img: bytes, title: str = "") -> np.ndarray | None:
+async def img2vec(img: bytes | str, title: str = "") -> np.ndarray | None:
     # img 转为 base64 url，获取mime类型
-    mime = imghdr.what(None, h=img)
-    if not mime:
-        logger.error("Cannot recognize image type")
-        return NULL_EMB
     input = []
     if title:
         input.append(
@@ -54,14 +48,33 @@ async def img2vec(img: bytes, title: str = "") -> np.ndarray | None:
                 "text": f"Title of the image: {title}",
             }
         )
-    input.append(
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:{mime};base64,{base64.b64encode(img).decode()}"
-            },
-        }
-    )
+    if isinstance(img, bytes):
+        mime = imghdr.what(img, h=img)
+        if not mime:
+            logger.error("Cannot recognize image type")
+            return None
+        input.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime};base64,{base64.b64encode(img).decode()}"
+                },
+            }
+        )
+    elif isinstance(img, str):
+        if img.startswith("http"):
+            input.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": img,
+                    },
+                }
+            )
+        else:
+            raise ValueError("img must be bytes or a valid URL string")
+    else:
+        raise ValueError("img must be bytes or a valid URL string")
     async with httpx.AsyncClient() as client:
         try:
             rsp = await client.post(
@@ -79,9 +92,9 @@ async def img2vec(img: bytes, title: str = "") -> np.ndarray | None:
             data = rsp.json()
         except Exception as e:
             logger.warning(f"Network seems down, cannot access internet: {e}")
-            return NULL_EMB
+            return None
     try:
-        return np.array(data["data"][0]["embedding"])
+        return np.array(data["data"]["embedding"])
     except Exception as e:
         logger.error(f"Error while embedding image: {title}, {e}")
-        return NULL_EMB
+        return None

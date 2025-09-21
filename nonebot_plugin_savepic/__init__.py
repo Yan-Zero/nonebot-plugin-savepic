@@ -61,50 +61,13 @@ __plugin_meta__ = PluginMetadata(
 repic = on_command("repic", priority=5)
 spic = on_alconna(
     Alconna(
-        "savepic",
+        "/savepic",
         Option("-g", help_text="全局"),
         Option("-ac", help_text="允许相似碰撞"),
         Args.filename[str],  # type: ignore
         meta=CommandMeta(description="保存图片，默认保存到本群"),
     )
 )
-
-
-def got_random_prompt(
-    cls: Matcher,
-    key: str,
-    prompt: Optional[list[Union[str, Message, MessageSegment, MessageTemplate]]] = None,
-    parameterless: Optional[Iterable[Any]] = None,
-) -> Callable[[T_Handler], T_Handler]:
-    async def _key_getter(event: Event, matcher: "Matcher"):
-        matcher.set_target(ARG_KEY.format(key=key))
-        if matcher.get_target() == ARG_KEY.format(key=key):
-            matcher.set_arg(key, event.get_message())
-            return
-        if matcher.get_arg(key, ...) is not ...:
-            return
-        await matcher.reject("" if not prompt else random.choice(prompt))
-
-    _parameterless = (Depends(_key_getter), *(parameterless or ()))
-
-    def _decorator(func: T_Handler) -> T_Handler:
-        if cls.handlers and cls.handlers[-1].call is func:
-            func_handler = cls.handlers[-1]
-            new_handler = Dependent(
-                call=func_handler.call,
-                params=func_handler.params,
-                parameterless=Dependent.parse_parameterless(
-                    tuple(_parameterless), cls.HANDLER_PARAM_TYPES
-                )
-                + func_handler.parameterless,
-            )
-            cls.handlers[-1] = new_handler
-        else:
-            cls.append_handler(func, parameterless=_parameterless)
-
-        return func
-
-    return _decorator
 
 
 @repic.handle()
@@ -181,7 +144,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
             url=dir,
             scope=state["savepiv_group"],
             uploader=f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}",
-            vec=await img2vec(img, state["savepiv_filename"]),
+            vec=await img2vec(picture[0].data["url"], state["savepiv_filename"]),
             collision_allow=state["savepiv_ac"],
         )
     except SameNameException:

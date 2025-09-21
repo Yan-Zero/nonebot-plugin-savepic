@@ -99,8 +99,7 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         if not picture:
             await s_simpic.finish("请发送图片后再使用该指令喵~")
 
-        img = await load_pic(picture[0].data["url"])
-        vec = await img2vec(img)
+        vec = await img2vec(picture[0].data["url"])
         if vec is None:
             await s_simpic.finish("图片特征提取失败喵~")
         group_id = (
@@ -124,7 +123,7 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
 # delpic = on_command("delpic", priority=5)
 rmpic = on_alconna(
     Alconna(
-        "rmpic",
+        "/rmpic",
         Option("-g", help_text="是否为全局图片，需要权限。"),
         Args.filename[str],  # type: ignore
         meta=CommandMeta(

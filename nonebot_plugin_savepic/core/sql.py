@@ -57,12 +57,8 @@ async def select_pic(filename: str, scope: str) -> Optional[str]:
     async with POOL.acquire() as conn:
         ret = await conn.fetchval(
             "SELECT COALESCE("
-            "  (SELECT url FROM picdata "
-            "    WHERE name = $1 AND $2 = ANY(scope) "
-            "    ORDER BY id DESC LIMIT 1),"
-            "  (SELECT url FROM picdata "
-            "    WHERE name = $1 AND 'globe' = ANY(scope) "
-            "    ORDER BY id DESC LIMIT 1)"
+            "  (SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope) LIMIT 1),"
+            "  (SELECT url FROM picdata WHERE name = $1 AND 'globe' = ANY(scope) LIMIT 1)"
             ");",
             filename,
             scope,
@@ -114,7 +110,7 @@ async def savepic(
     async with POOL.acquire() as conn:
         # 判断是否存在相同名字的图片
         ret = await conn.fetchval(
-            "SELECT id FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+            "SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
             filename,
             scope,
         )
@@ -134,12 +130,12 @@ async def savepic(
         if not collision_allow and vec is not None:
             row = await conn.fetchrow(
                 (
-                    "SELECT name, url, - (vec16 <#> ($1::halfvec) AS similarity "
+                    "SELECT name, url, -(vec <#> $1::halfvec) AS similarity "
                     "FROM picdata "
                     "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) AND name <> '' "
-                    "ORDER BY vec16 <#> $1::halfvec LIMIT 1;"
+                    "ORDER BY similarity DESC LIMIT 1;"
                 ),
-                vec.astype(np.float16).tolist(),
+                str(vec.tolist()),
                 scope,
             )
             if row and row["similarity"] >= 0.925:
@@ -228,7 +224,7 @@ async def simpic(
     async with POOL.acquire() as conn:
         row = await conn.fetchrow(
             (
-                "SELECT id, 1 - (vec <=> $1::halfvec) AS similarity, name, url "
+                "SELECT (1 - (vec <=> $1::halfvec)) AS similarity, name, url "
                 "FROM picdata "
                 "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
                 "AND name <> '' "
@@ -240,7 +236,6 @@ async def simpic(
         )
         if row:
             return row["similarity"], PicData(
-                id=row["id"],
                 name=row["name"],
                 url=row["url"],
             )
@@ -379,7 +374,7 @@ async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
     async with POOL.acquire() as conn:
         row = await conn.fetchrow(
             (
-                "SELECT id, name, scope, url FROM picdata "
+                "SELECT name, scope, url FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
                 "AND name ~* $2 "
                 "ORDER BY random() LIMIT 1;"
@@ -389,7 +384,6 @@ async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
         )
         if row:
             return PicData(
-                id=row["id"],
                 name=row["name"],
                 scope=row["scope"],
                 url=row["url"],
@@ -407,7 +401,7 @@ async def randpic(
         if not name:
             row = await conn.fetchrow(
                 (
-                    "SELECT id, name, scope, url FROM picdata "
+                    "SELECT name, scope, url FROM picdata "
                     "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
                     "ORDER BY random() LIMIT 1;"
                 ),
@@ -416,7 +410,6 @@ async def randpic(
             if row:
                 return (
                     PicData(
-                        id=row["id"],
                         name=row["name"],
                         scope=row["scope"],
                         url=row["url"],
@@ -426,7 +419,7 @@ async def randpic(
             return None, ""
         row = await conn.fetchrow(
             (
-                "SELECT id, name, scope, url FROM picdata "
+                "SELECT name, scope, url FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
                 "AND name ILIKE $2 "
                 "ORDER BY random() LIMIT 1;"
@@ -437,7 +430,6 @@ async def randpic(
         if row:
             return (
                 PicData(
-                    id=row["id"],
                     name=row["name"],
                     scope=row["scope"],
                     url=row["url"],
@@ -448,21 +440,24 @@ async def randpic(
         if not vector:
             return None, ""
 
+        v = await word2vec(name)
+        if v is None:
+            return None, ""
+
         row = await conn.fetchrow(
             (
-                "SELECT id, name, scope, url FROM picdata "
+                "SELECT name, scope, url FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
                 "AND vec IS NOT NULL AND vec <=> $2::halfvec <= $3::float "
                 "ORDER BY vec <#> $2::halfvec LIMIT 1;"
             ),
             scope,
-            str((await word2vec(name)).tolist()),
+            str(v),
             threshold,
         )
         if row:
             return (
                 PicData(
-                    id=row["id"],
                     name=row["name"],
                     scope=row["scope"],
                     url=row["url"],
@@ -627,13 +622,11 @@ async def init_db():
                 await conn.execute(
                     (
                         "CREATE TABLE picdata (\n"
-                        "  id       bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, \n"
                         "  name     text   NOT NULL, \n"
                         "  scope    text[] NOT NULL, \n"
-                        "  url      text   NOT NULL, \n"
+                        "  url      text   PRIMARY KEY, \n"
                         "  vec      halfvec(2048), \n"
                         "  uploader text   NOT NULL, \n"
-                        "  CONSTRAINT unique_url UNIQUE (url) NOT DEFERRABLE \n"
                         ");"
                     )
                 )

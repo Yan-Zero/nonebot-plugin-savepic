@@ -21,7 +21,7 @@ dependencies = [
     "nonebot-plugin-alconna>=0.59.4",
 ]
 name = "nonebot-plugin-savepic"
-version = "0.5.1"
+version = "0.5.2"
 description = "保存表情包（语录）与随机出图"
 readme = "README.md"
 
