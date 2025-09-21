@@ -116,7 +116,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await spic.finish("存图失败。" + "\n" + str(ex))
 
     try:
-        await savepic(
+        r = await savepic(
             filename=state["savepiv_filename"],
             url=dir,
             scope=state["savepiv_group"],
@@ -149,4 +149,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
-    await spic.send("保存成功")
+    if r:
+        await spic.send(f"保存成功，但是名字为`{r}`")
+    else:
+        await spic.send("保存成功")

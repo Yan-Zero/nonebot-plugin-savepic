@@ -137,10 +137,11 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if sname == dname and sg == dg:
         await s_mvpic.finish("嗯，什么都没有变化嘛。")
 
+    v = None
     if sname != dname:
         url = await select_pic(sname, sg, True)
         if not url:
-            await s_mvpic.finish(f"\n{sname} 没有找到哦")
+            await s_mvpic.finish(f"{sname} 没有找到哦")
         v = await img2vec(
             await bot.call_api("upload_image", file=f2s(await load_pic(url))), dname
         )
@@ -148,7 +149,7 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     try:
         await rename(sname, dname, sg, dg, is_admin=await PIC_ADMIN(bot, event), vec=v)
     except NoPictureException as ex:
-        await s_mvpic.finish(f"\n{ex.name} 没有找到哦")
+        await s_mvpic.finish(f"{ex.name} 没有找到哦")
     except SameNameException:
         await s_mvpic.finish("文件名重复")
     except Exception as ex:

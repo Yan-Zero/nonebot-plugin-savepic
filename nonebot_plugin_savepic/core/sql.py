@@ -121,7 +121,7 @@ async def savepic(
 
         # 如果 URL 已经存在，且对应图片名字不为空，则相似图片错误
         name = await conn.fetchval(
-            "SELECT name FROM picdata WHERE url = $1 AND name <> '' AND $2 = ANY(scope);",
+            "SELECT name FROM picdata WHERE url = $1 AND $2 = ANY(scope);",
             url,
             scope,
         )
@@ -133,8 +133,8 @@ async def savepic(
             row = await conn.fetchrow(
                 (
                     "SELECT name, url, (1-(vec <=> $1::halfvec)) AS similarity FROM picdata "
-                    "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) AND name <> '' "
-                    "AND similarity >= 0.6 "
+                    "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
+                    "AND (1-(vec <=> $1::halfvec)) >= 0.6 "
                     "ORDER BY similarity DESC LIMIT 1;"
                 ),
                 str(vec.tolist()),
@@ -145,59 +145,32 @@ async def savepic(
                     row["name"], row["similarity"], row["url"]
                 )
 
-        sql = """WITH take AS (
-  SELECT ctid
-  FROM picdata
-  WHERE name = ''
-  FOR UPDATE SKIP LOCKED
-  LIMIT 1
-),
-upd_empty AS (
-  UPDATE picdata p
-  SET name     = $1,
-      scope    = ARRAY[$2]::text[],
-      url      = $3,
-      vec      = $4::halfvec,
-      uploader = $5
-  FROM take t
-  WHERE p.ctid = t.ctid
-    AND NOT EXISTS (SELECT 1 FROM picdata q WHERE q.url = $3)
-  RETURNING p.name
-),
-ins AS (
-  INSERT INTO picdata (name, scope, url, vec, uploader)
-  SELECT $1, ARRAY[$2]::text[], $3, $4::halfvec, $5
-  WHERE NOT EXISTS (SELECT 1 FROM upd_empty)
-  ON CONFLICT (url) DO UPDATE
-  SET
-    name     = CASE WHEN picdata.name = '' THEN EXCLUDED.name ELSE picdata.name END,
-    scope    = CASE
-                  WHEN picdata.name = '' THEN EXCLUDED.scope
-                  WHEN EXCLUDED.scope = ARRAY['globe']::text[] THEN ARRAY['globe']::text[]
-                  WHEN NOT (EXCLUDED.scope[1] = ANY(picdata.scope)) THEN array_append(picdata.scope, EXCLUDED.scope[1])
-                  ELSE picdata.scope
-               END,
-    vec      = COALESCE(EXCLUDED.vec, picdata.vec),
-    uploader = EXCLUDED.uploader
-  RETURNING picdata.name
-)
-
-SELECT name FROM upd_empty
-UNION ALL
-SELECT name FROM ins
-LIMIT 1;"""
         # 事务
         async with conn.transaction():
-            ret = await conn.fetchval(
-                sql,
-                filename,
-                scope,
-                url,
-                str(vec.tolist()) if vec is not None else None,
-                uploader,
+            row = await conn.fetchrow(
+                """
+INSERT INTO picdata (name, scope, url, vec, uploader)
+VALUES ($1, ARRAY[$2]::text[], $3, $4::halfvec, $5)
+ON CONFLICT (url) DO UPDATE
+SET
+    scope = CASE
+            WHEN EXCLUDED.scope = ARRAY['globe']::text[]
+                THEN ARRAY['globe']::text[]
+            WHEN NOT (EXCLUDED.scope[1] = ANY(picdata.scope))
+                THEN array_append(picdata.scope, EXCLUDED.scope[1])
+            ELSE picdata.scope
+            END,
+    vec   = COALESCE(EXCLUDED.vec, picdata.vec)
+RETURNING name;""",
+                filename,  # $1: 传入的 name
+                scope,  # $2
+                url,  # $3
+                (str(vec.tolist()) if vec is not None else None),  # $4
+                uploader,  # $5
             )
-            if filename != name:
-                return name
+
+            if row["name"] != filename:
+                return row["name"]
 
 
 async def simpic(
@@ -228,7 +201,7 @@ async def simpic(
             (
                 "SELECT (1-(vec <=> $1::halfvec)) AS similarity, name, url FROM picdata "
                 "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
-                "AND name <> '' ORDER BY similarity DESC LIMIT 1;"
+                "ORDER BY similarity DESC LIMIT 1;"
             ),
             str(img_vec.tolist()),
             scope,
@@ -306,14 +279,19 @@ async def rename(
 
         await conn.execute(
             "UPDATE picdata SET name = $1, scope = CASE "
-            "WHEN $3 = 'globe' THEN ARRAY['globe']::text[] "
-            "WHEN 'globe' = ANY(scope) AND $4 <> 'globe' THEN ARRAY[$4]::text[] "
-            "ELSE scope END, vec = CASE WHEN name <> $1 THEN $5 ELSE vec END "
-            "WHERE name = $2 AND $3 = ANY(scope);",
+            "  WHEN $3 = 'globe' THEN ARRAY['globe']::text[] "
+            "  WHEN 'globe' = ANY(scope) THEN ARRAY[$3]::text[] "
+            "  ELSE CASE "
+            "    WHEN $3 = ANY(array_remove(scope, $4)) "
+            "        THEN array_remove(scope, $4) "
+            "    ELSE array_append(array_remove(scope, $4), $3) "
+            "  END END, "
+            "vec = CASE WHEN name <> $1 THEN $5 ELSE vec END "
+            "WHERE name = $2 AND $4 = ANY(scope);",
             des,
             ori,
-            source_scope,
             dest_scope,
+            source_scope,
             str(vec.tolist()) if vec is not None else None,
         )
 
@@ -344,11 +322,13 @@ async def delete(filename: str, scope: str):
             scope,
         ):
             raise NoPictureException(filename)
-
         await conn.execute(
-            "UPDATE picdata SET name = CASE WHEN scope = ARRAY[$2]::text[] THEN '' ELSE name END, "
-            "scope = CASE WHEN scope = ARRAY[$2]::text[] THEN scope ELSE array_remove(scope, $2) END "
-            "WHERE name = $1 AND $2 = ANY(scope);",
+            "DELETE FROM picdata WHERE name = $1 AND scope = ARRAY[$2]::text[];",
+            filename,
+            scope,
+        )
+        await conn.execute(
+            "UPDATE picdata SET scope = array_remove(scope, $2) WHERE name = $1 AND $2 = ANY(scope);",
             filename,
             scope,
         )
@@ -380,7 +360,7 @@ async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
         row = await conn.fetchrow(
             (
                 "SELECT name, scope, url FROM picdata "
-                "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
                 "AND name ~* $2 "
                 "ORDER BY random() LIMIT 1;"
             ),
@@ -407,7 +387,7 @@ async def randpic(
             row = await conn.fetchrow(
                 (
                     "SELECT name, scope, url FROM picdata "
-                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
+                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND "
                     "ORDER BY random() LIMIT 1;"
                 ),
                 scope,
@@ -425,7 +405,7 @@ async def randpic(
         row = await conn.fetchrow(
             (
                 "SELECT name, scope, url FROM picdata "
-                "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
                 "AND name ILIKE $2 "
                 "ORDER BY random() LIMIT 1;"
             ),
@@ -452,9 +432,8 @@ async def randpic(
         row = await conn.fetchrow(
             (
                 "SELECT name, scope, url, (1-(vec <=> $2::halfvec)) as similarity FROM picdata "
-                "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
-                "AND vec IS NOT NULL "
-                "ORDER BY similarity DESC LIMIT 1;"
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND vec IS NOT NULL ORDER BY similarity DESC LIMIT 1;"
             ),
             scope,
             str(v.tolist()),
@@ -500,7 +479,7 @@ async def countpic(reg: str, scope: str = "globe") -> int:
             await conn.fetchval(
                 (
                     "SELECT COUNT(*) FROM picdata "
-                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
+                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
                     "AND name ~* $2;"
                 ),
                 scope,
@@ -551,10 +530,8 @@ async def listpic(
         row = await conn.fetch(
             (
                 "SELECT name, ('globe' = ANY(scope)) AS is_global FROM picdata "
-                "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
-                "AND name ~* $2 "
-                "ORDER BY name "
-                "OFFSET $3 LIMIT $4;"
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND name ~* $2 ORDER BY name OFFSET $3 LIMIT $4;"
             ),
             scope,
             reg,
