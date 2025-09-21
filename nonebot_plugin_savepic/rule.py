@@ -1,4 +1,4 @@
-""" 
+"""
 This module is used to define the permission of the bot.
 """
 
@@ -28,4 +28,4 @@ class Savepic_Admin(Permission):
         )
 
 
-PIC_AMDIN = Permission(Savepic_Admin())
+PIC_ADMIN = Permission(Savepic_Admin())

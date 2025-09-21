@@ -1,9 +1,10 @@
 class SameNameException(Exception):
-    def __init__(self, name):
+    def __init__(self, name, scope):
         self.name = name
+        self.scope = scope
 
     def __str__(self):
-        return "Name {} already exists".format(self.name)
+        return "Name {} already exists in scope {}".format(self.name, self.scope)
 
 
 class SimilarPictureException(Exception):
@@ -22,3 +23,12 @@ class NoPictureException(Exception):
 
     def __str__(self):
         return "Picture {} not found".format(self.name)
+
+
+class PermissionException(Exception):
+    def __init__(self, name, reason="No permission"):
+        self.name = name
+        self.reason = reason
+
+    def __str__(self):
+        return "No permission to access {}: {}".format(self.name, self.reason)

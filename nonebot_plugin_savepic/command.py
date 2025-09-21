@@ -1,26 +1,21 @@
 import traceback
-import asyncio
+
 from pathlib import Path
-from sqlalchemy.exc import DBAPIError
 from nonebot import on_command
 from nonebot.plugin import on_endswith
 from nonebot.params import CommandArg
 from nonebot.adapters import Bot
 from nonebot.adapters import Message
 from nonebot.adapters import Event
-from nonebot.adapters.onebot import utils
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 
-from .config import plugin_config
 from .core.sql import simpic
 from .core.sql import randpic
 from .core.sql import countpic
 from .core.sql import select_pic
 from .core.utils import img2vec
-from .core.utils import word2vec
-from .core.utils import ocr as ocr_image
 from .core.fileio import load_pic
 
 cpic = on_command("countpic", priority=5)
@@ -34,8 +29,6 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
     )
     try:
         await bot.send(event, f"共查找到 {await countpic(reg, group_id)} 张图片。")
-    except DBAPIError as ex:
-        await cpic.finish(f"出错了喵~\n\n{ex.orig}")
     except Exception as ex:
         await cpic.finish(f"出错了喵~\n\n{ex}")
 
@@ -50,10 +43,9 @@ async def _(bot: Bot, event: Event):
         "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
     )
     try:
-        pic = await select_pic(name, group_id)
-        if pic:
-            file_ = await load_pic(pic.url)
-            await bot.send(event, V11Seg.image(file=file_))
+        if url := await select_pic(name, group_id):
+            file_ = await load_pic(url)
+            await pic_listen.send(V11Seg.image(file=file_))
     except Exception as ex:
         await pic_listen.finish(str(ex))
 
@@ -68,7 +60,7 @@ def url_to_image(url: str):
 
 
 @rpic.handle()
-async def _(bot, event, args: V11Msg = CommandArg()):
+async def _(bot: Bot, event: Event, args: V11Msg = CommandArg()):
     name = args.extract_plain_text().strip()
     group_id = (
         "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
@@ -78,15 +70,13 @@ async def _(bot, event, args: V11Msg = CommandArg()):
         if not pic:
             await rpic.send("404 Not Found.")
             return
-        await bot.send(
-            event,
+        await rpic.send(
             V11Msg(
                 [
-                    pic.name,
-                    "\n" + t if t else "",
+                    V11Seg.text(pic.name + "\n" + t if t else ""),
                     url_to_image(pic.url),
                 ]
-            ),
+            )
         )
     except Exception as ex:
         with open("error.txt", "w+") as f:
@@ -97,43 +87,20 @@ async def _(bot, event, args: V11Msg = CommandArg()):
 
 s_simpic = on_command("simpic", priority=5)
 
-__lock__ = asyncio.Lock()
-
 
 @s_simpic.handle()
 async def _(bot: Bot, event: Event, args: Message = CommandArg()):
-    if __lock__.locked():
-        await s_simpic.finish("相似图片搜索中，请稍后再试喵~")
-    if plugin_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
-        await s_simpic.finish("当前配置的模型不支持相似图片搜索喵~")
     try:
         picture = args.get("image")
-        if not picture:
-            picture = event.reply.message.get("image") if event.reply else None
+        if not picture and hasattr(event, "reply"):
+            picture = event.reply.message.get("image") if event.reply else None  # type: ignore
         if not picture:
             await s_simpic.finish("请发送图片后再使用该指令喵~")
+
         img = await load_pic(picture[0].data["url"])
-
-        try:
-            ocr = await ocr_image(img)
-        except Exception:
-            ocr = {}
-
-        if "text" in ocr:
-            ocr = ocr["text"]
-        else:
-            ocr = await bot.ocr_image(image=utils.f2s(img))
-            if ocr and "texts" in ocr:
-                r = ""
-                for d in ocr["texts"]:
-                    r += d["text"]
-                ocr = r.strip()
-            else:
-                ocr = ""
-            if len(set(ocr)) <= 10:
-                ocr = ""
-        async with __lock__:
-            vec = await img2vec(img, ocr)
+        vec = await img2vec(img)
+        if vec is None:
+            await s_simpic.finish("图片特征提取失败喵~")
         group_id = (
             "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
         )
@@ -143,35 +110,8 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
 
     if pic:
         ret = []
-        if event.reply:
-            ret.append(V11Seg.reply(event.reply.message_id))
-        ret.append(f"{pic.name}\n(相似性：{'%.4g' % (min(sim * 100, 100.0))}%)")
-        ret.append(url_to_image(pic.url))
-        await s_simpic.send(V11Msg(ret))
-    else:
-        await s_simpic.send("没有找到相似的图片喵~")
-
-
-clip = on_command("clip", priority=5)
-
-
-@clip.handle()
-async def _(bot: Bot, event: Event, args: Message = CommandArg()):
-    if plugin_config.simpic_model not in ["ViT/16-Bfloat16-Modify"]:
-        await s_simpic.finish("当前配置的模型不支持相似图片搜索喵~")
-    name = args.extract_plain_text().strip()
-    group_id = (
-        "globe" if not isinstance(event, V11GME) else f"qq_group:{event.group_id}"
-    )
-    try:
-        sim, pic = await simpic(await word2vec(name), group_id, True)
-    except Exception as ex:
-        await s_simpic.finish(str(ex))
-
-    if pic:
-        ret = []
-        if event.reply:
-            ret.append(V11Seg.reply(event.reply.message_id))
+        if event.reply:  # type: ignore
+            ret.append(V11Seg.reply(event.reply.message_id))  # type: ignore
         ret.append(f"{pic.name}\n(相似性：{'%.4g' % (min(sim * 100, 100.0))}%)")
         ret.append(url_to_image(pic.url))
         await s_simpic.send(V11Msg(ret))

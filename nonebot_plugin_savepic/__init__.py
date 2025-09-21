@@ -1,4 +1,12 @@
-from nonebot import get_plugin_config
+import random
+
+from typing import (
+    Any,
+    Union,
+    Callable,
+    Iterable,
+    Optional,
+)
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters.onebot import utils
@@ -9,20 +17,11 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
-from sqlalchemy.exc import DBAPIError
-from arclet.alconna import Alconna, Option, Args, CommandMeta
-import random
-from typing import (
-    Any,
-    Union,
-    Callable,
-    Iterable,
-    Optional,
-)
 from nonebot.typing import (
     T_State,
     T_Handler,
 )
+from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot.consts import ARG_KEY
 from nonebot.internal.params import Depends
 from nonebot.internal.adapter import (
@@ -32,18 +31,18 @@ from nonebot.internal.adapter import (
     MessageSegment,
     MessageTemplate,
 )
+from nonebot_plugin_alconna import (
+    on_alconna,
+    Match as AMatch,
+)
 
-from .rule import PIC_AMDIN
+from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
 from .config import plugin_config
-from .listpic import UPLOADER
 from .command import url_to_image
-from .core.sql import savepic
-from .core.sql import delete
-from .core.sql import regexp_pic
+from .core.sql import savepic, delete, regexp_pic, check_uploader
 from .core.utils import img2vec
-from .core.utils import ocr as ocr_image
 from .core.error import SameNameException
 from .core.error import SimilarPictureException
 from .core.fileio import write_pic, load_pic, del_pic
@@ -61,19 +60,19 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
     homepage="https://github.com/Yan-Zero/nonebot-plugin-savepic",
     type="application",
-    supported_adapters=["~onebot.v11"],
+    supported_adapters=set(["~onebot.v11"]),
 )
 
 repic = on_command("repic", priority=5)
-spic = on_command("savepic", priority=5)
-a_spic = Alconna(
-    "/savepic",
-    Option("-d", help_text="删除图片"),
-    Option("-g", help_text="全局"),
-    Option("-ac", help_text="允许相似碰撞"),
-    Option("-nocr", help_text="跳过图片OCR"),
-    Args.filename[str],
-    meta=CommandMeta(description="保存图片，默认保存到本群"),
+spic = on_alconna(
+    Alconna(
+        "savepic",
+        Option("-d", help_text="删除图片"),
+        Option("-g", help_text="全局"),
+        Option("-ac", help_text="允许相似碰撞"),
+        Args["filename":str],  # type: ignore
+        meta=CommandMeta(description="保存图片，默认保存到本群"),
+    )
 )
 
 
@@ -123,13 +122,46 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         else f"qq_group:{event.group_id}"
     )
     try:
-        pic = await regexp_pic(reg, group_id)
-        if pic:
-            await bot.send(event, V11Msg([pic.name, url_to_image(pic.url)]))
-    except DBAPIError as ex:
-        await repic.finish(f"出错了。{ex.orig}")
+        if pic := await regexp_pic(reg, group_id):
+            await bot.send(
+                event, V11Msg([V11Seg.text(pic.name), url_to_image(pic.url)])
+            )
     except Exception as ex:
         await repic.finish(f"出错了。{ex}")
+
+
+@spic.assign("-d")
+async def _(bot: Bot, event: GroupMessageEvent, filename: AMatch[str], arp: Arparma):
+    """删除图片"""
+    if not filename.available:
+        await spic.finish("没有指定要删除的图片")
+    # 构造上传者名字
+    user = (
+        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
+    )
+
+    if not (
+        await PIC_ADMIN(bot, event)
+        or await GROUP_ADMIN(bot, event)
+        or await check_uploader(
+            filename.result,
+            f"qq_group:{event.group_id}",
+            user,
+        )
+    ):
+        await spic.finish("没有权限")
+
+    scope = f"qq_group:{event.group_id}"
+    # 如果有 -g 选项
+    if arp.g:
+        if not await PIC_ADMIN(bot, event):
+            await spic.send("你的 -g 选项没有用哟")
+        else:
+            scope = "globe"
+    try:
+        await delete(filename.result, scope)
+    except Exception as ex:
+        await spic.finish(str(ex))
 
 
 @spic.handle()
@@ -138,48 +170,30 @@ async def _(
     matcher: Matcher,
     event: GroupMessageEvent,
     state: T_State,
+    command: Arparma,
 ):
-    command = a_spic.parse(event.message.extract_plain_text())
     if not command.matched:
-        await spic.finish(str(command.error_info) + "\n\n" + a_spic.get_help())
+        await spic.finish(str(command.error_info))
 
     state["savepiv_group"] = (
         "globe"
-        if command.g and await PIC_AMDIN(bot, event)
+        if command.g and await PIC_ADMIN(bot, event)
         else f"qq_group:{event.group_id}"
     )
-    state["savepiv_warning"] = (
-        ""
-        if not command.g or await PIC_AMDIN(bot, event)
-        else "\n\n你的 -g 选项没有用哟"
-    )
+
+    if command.g and not await PIC_ADMIN(bot, event):
+        await spic.send("你的 -g 选项没有用哟")
+
     filename = command.filename
+    if not isinstance(filename, str):
+        await spic.finish("文件名无效")
+
     for c in INVALID_FILENAME_CHARACTERS:
         filename = filename.replace(c, "-")
     if not filename.endswith((".jpg", ".png", ".gif")):
         filename += ".jpg"
     state["savepiv_filename"] = filename
     state["savepiv_ac"] = command.ac is not None
-
-    if command.d:
-        if not (
-            await PIC_AMDIN(bot, event)
-            or await GROUP_ADMIN(bot, event)
-            or UPLOADER.get(
-                state["savepiv_filename"] + ":" + state["savepiv_group"], None
-            )
-            == f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
-        ):
-            await spic.finish("没有权限")
-        try:
-            await delete(filename, state["savepiv_group"])
-        except Exception as ex:
-            await spic.finish(str(ex))
-        await spic.finish("图片已删除" + state["savepiv_warning"])
-    if command.nocr:
-        state["savepiv_nocr"] = False
-    else:
-        state["savepiv_nocr"] = True
 
     picture = event.message.get("image")
     if not picture and event.reply:
@@ -188,7 +202,7 @@ async def _(
         matcher.set_arg("picture", picture)
 
 
-@spic.got("picture", ["图呢"])
+@spic.got("picture", "图呢？")
 async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     picture = picture.get("image")
     if not picture:
@@ -197,38 +211,18 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     try:
         dir = await write_pic(picture[0].data["url"], plugin_config.savepic_dir)
         img = await load_pic(dir)
-        if state["savepiv_nocr"]:
-            try:
-                ocr = await ocr_image(img)
-            except Exception:
-                ocr = {}
-
-            if "text" in ocr:
-                ocr = ocr["text"]
-            else:
-                ocr = await bot.ocr_image(image=utils.f2s(img))
-                if ocr and "texts" in ocr:
-                    r = ""
-                    for d in ocr["texts"]:
-                        r += d["text"]
-                    ocr = r.strip()
-                else:
-                    ocr = ""
-                if len(set(ocr)) <= 10:
-                    ocr = ""
-        else:
-            ocr = ""
     except Exception as ex:
         await del_pic(dir)
         await spic.finish("存图失败。" + "\n" + str(ex))
 
     try:
         await savepic(
-            state["savepiv_filename"],
-            dir,
-            await img2vec(img, ocr),
-            state["savepiv_group"],
-            state["savepiv_ac"],
+            filename=state["savepiv_filename"],
+            url=dir,
+            scope=state["savepiv_group"],
+            uploader=f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}",
+            vec=await img2vec(img, state["savepiv_filename"]),
+            collision_allow=state["savepiv_ac"],
         )
     except SameNameException:
         await del_pic(dir)
@@ -242,9 +236,12 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await spic.finish(
             V11Msg(
                 [
-                    "存在相似图片",
-                    "\n\n" + ex.name,
-                    f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n",
+                    V11Seg.text(
+                        "存在相似图片"
+                        + "\n\n"
+                        + ex.name
+                        + f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n"
+                    ),
                     V11Seg.image(file=image),
                 ]
             )
@@ -252,7 +249,4 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
-    await spic.send("保存成功" + state["savepiv_warning"])
-    UPLOADER[state["savepiv_filename"] + ":" + state["savepiv_group"]] = (
-        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
-    )
+    await spic.send("保存成功")

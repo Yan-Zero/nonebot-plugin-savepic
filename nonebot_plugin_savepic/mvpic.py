@@ -4,7 +4,7 @@ from nonebot.internal.adapter import Bot
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
-from .rule import PIC_AMDIN
+from .rule import PIC_ADMIN
 from .core.sql import rename
 from .core.error import NoPictureException
 from .core.error import SameNameException
@@ -25,7 +25,7 @@ INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 
 @s_mvpic.handle()
 async def _(bot: Bot, event: V11GME, args=CommandArg()):
-    if not (await PIC_AMDIN(bot, event) or await GROUP_ADMIN(bot, event)):
+    if not (await PIC_ADMIN(bot, event) or await GROUP_ADMIN(bot, event)):
         await s_mvpic.finish("没有权限")
 
     cmd = args.extract_plain_text().strip()
@@ -102,7 +102,7 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not options:
         options = ["l"]
 
-    if (not await PIC_AMDIN(bot, event)) and await GROUP_ADMIN(bot, event):
+    if (not await PIC_ADMIN(bot, event)) and await GROUP_ADMIN(bot, event):
         if "g" in options:
             await s_mvpic.finish("管理员不能改全局名称哦~")
 

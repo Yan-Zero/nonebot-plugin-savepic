@@ -10,14 +10,10 @@ class Config(BaseModel):
     savepic_dir: str = "savepic"
     savepic_sqlurl: str
 
-    pinecone_apikey: str
-    pinecone_index: str = "savepic"
-    pinecone_environment: str
-
     embedding_sqlurl: str
-    openai_apikey: str
-    openai_baseurl: str
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_key: str
+    embedding_baseurl: str
+    embedding_model: str
     simpic_model: str = Field(default="")
     p_model_path: str = Field(default="")
 
@@ -35,4 +31,4 @@ class Config(BaseModel):
     local_sqlite_path: str = Field(default="sqlite+aiosqlite:///./savepic.db")
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config: Config = get_plugin_config(Config)
