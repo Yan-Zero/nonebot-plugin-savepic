@@ -1,5 +1,6 @@
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.utils import f2s
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
@@ -12,8 +13,9 @@ from .core.fileio import load_pic
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
-s_mvpic = on_command("mvpic", priority=5)
 INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
+s_mvpic = on_command("mvpic", priority=5)
+update_vec = on_command("pic.vec.update", permission=SUPERUSER, priority=1, block=True)
 
 
 # mvpic -l name -g name
@@ -155,3 +157,48 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     except Exception as ex:
         await s_mvpic.finish(f"出错了。{ex}")
     await s_mvpic.finish("图片已重命名")
+
+
+@update_vec.handle()
+async def _(bot: Bot):
+    from .core import sql
+
+    if not sql.POOL:
+        await update_vec.finish("数据库未初始化")
+    await update_vec.send("开始更新图片特征向量...")
+    async with sql.POOL.acquire() as conn:
+        count = await conn.fetchval("SELECT COUNT(*) FROM picdata WHERE vec IS NULL;")
+        if count == 0:
+            await update_vec.finish("没有需要更新的图片特征向量")
+        finish = 0
+        await update_vec.send(f"共有 {count} 张图片需要更新")
+        async with conn.transaction():
+            async for record in conn.cursor(
+                "SELECT name, url FROM picdata WHERE vec IS NULL;"
+            ):
+                finish += 1
+                # 每10%更新一次进度
+                if finish % max(1, count // 10) == 0:
+                    await update_vec.send(
+                        f"已完成 {finish}/{count} 张图片的特征向量更新"
+                    )
+                try:
+                    vec = await img2vec(
+                        await bot.call_api(
+                            "upload_image", file=f2s(await load_pic(record["url"]))
+                        ),
+                        record["name"],
+                    )
+                    if vec is None:
+                        logger.warning(f"图片 {record['name']} 特征提取失败，跳过")
+                        continue
+                    await conn.execute(
+                        "UPDATE picdata SET vec = $1 WHERE url = $2;",
+                        str(vec.tolist()),
+                        record["url"],
+                    )
+                except Exception as ex:
+                    logger.error(
+                        f"图片 {record['name']} 特征提取失败，跳过，错误信息：{ex}"
+                    )
+    await update_vec.finish("图片特征向量更新完成")

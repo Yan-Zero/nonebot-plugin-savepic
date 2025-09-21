@@ -8,14 +8,23 @@ from nonebot.adapters import Bot
 from nonebot.adapters import Message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
-from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
+from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
 from .core.sql import simpic, randpic, countpic, select_pic
 from .core.utils import img2vec
 from .core.fileio import load_pic
 
 cpic = on_command("countpic", priority=5)
+rpic = on_command("randpic", priority=5)
+s_simpic = on_command("simpic", priority=5)
+pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
+
+
+def url_to_image(url: str):
+    if url.startswith("http"):
+        return V11Seg.image(url)
+    return V11Seg.image(Path(url))
 
 
 @cpic.handle()
@@ -30,9 +39,6 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         await cpic.finish(f"出错了喵~\n\n{ex}")
 
 
-pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
-
-
 @pic_listen.handle()
 async def _(bot: Bot, event: Event):
     name = event.get_plaintext().strip()
@@ -45,15 +51,6 @@ async def _(bot: Bot, event: Event):
             await pic_listen.send(V11Seg.image(file=file_))
     except Exception as ex:
         await pic_listen.finish(str(ex))
-
-
-rpic = on_command("randpic", priority=5)
-
-
-def url_to_image(url: str):
-    if url.startswith("http"):
-        return V11Seg.image(url)
-    return V11Seg.image(Path(url))
 
 
 @rpic.handle()
@@ -82,18 +79,16 @@ async def _(bot: Bot, event: Event, args: V11Msg = CommandArg()):
         await rpic.finish(str(ex))
 
 
-s_simpic = on_command("simpic", priority=5)
-
-
 @s_simpic.handle()
 async def _(bot: Bot, event: Event, args: Message = CommandArg()):
-    try:
-        picture = args.get("image")
-        if not picture and hasattr(event, "reply"):
-            picture = event.reply.message.get("image") if event.reply else None  # type: ignore
+    picture = args.get("image")
+    if not picture and hasattr(event, "reply"):
+        picture = event.reply.message.get("image") if event.reply else None  # type: ignore
         if not picture:
-            await s_simpic.finish("请发送图片后再使用该指令喵~")
-
+            picture = event.reply.message.get("mface") if event.reply else None  # type: ignore
+    if not picture:
+        await s_simpic.finish("请发送图片后再使用该指令喵~")
+    try:
         vec = await img2vec(picture[0].data["url"])
         if vec is None:
             await s_simpic.finish("图片特征提取失败喵~")

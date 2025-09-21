@@ -13,6 +13,18 @@ from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import plugin_config
 from .core.sql import listpic, delete, check_uploader
 
+rmpic = on_alconna(
+    Alconna(
+        "/rmpic",
+        Option("-g", help_text="是否为全局图片，需要权限。"),
+        Args.filename[str],  # type: ignore
+        meta=CommandMeta(
+            description="删除已保存的图片。管理员和上传者可删除群内图片。"
+        ),
+    ),
+    priority=5,
+    block=True,
+)
 s_listpic = on_command("listpic", priority=5)
 
 
@@ -74,20 +86,6 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
         await s_listpic.send("\n".join(pics[:cpp]))
     except Exception as ex:
         await s_listpic.finish(f"出错了。{ex}")
-
-
-rmpic = on_alconna(
-    Alconna(
-        "/rmpic",
-        Option("-g", help_text="是否为全局图片，需要权限。"),
-        Args.filename[str],  # type: ignore
-        meta=CommandMeta(
-            description="删除已保存的图片。管理员和上传者可删除群内图片。"
-        ),
-    ),
-    priority=5,
-    block=True,
-)
 
 
 @rmpic.handle()

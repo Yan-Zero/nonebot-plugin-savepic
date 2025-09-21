@@ -387,7 +387,7 @@ async def randpic(
             row = await conn.fetchrow(
                 (
                     "SELECT name, scope, url FROM picdata "
-                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND "
+                    "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
                     "ORDER BY random() LIMIT 1;"
                 ),
                 scope,
