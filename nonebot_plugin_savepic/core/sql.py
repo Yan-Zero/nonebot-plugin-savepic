@@ -34,7 +34,7 @@ async def _():
         await POOL.close()
 
 
-async def select_pic(filename: str, scope: str) -> Optional[str]:
+async def select_pic(filename: str, scope: str, strict: bool = False) -> Optional[str]:
     """根据名字和作用域查询图片 URL
 
     Parameters
@@ -56,14 +56,16 @@ async def select_pic(filename: str, scope: str) -> Optional[str]:
 
     async with POOL.acquire() as conn:
         ret = await conn.fetchval(
-            "SELECT COALESCE("
-            "  (SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope) LIMIT 1),"
-            "  (SELECT url FROM picdata WHERE name = $1 AND 'globe' = ANY(scope) LIMIT 1)"
-            ");",
+            "SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope) LIMIT 1;",
             filename,
             scope,
         )
-        return ret
+        if ret or strict:
+            return ret
+        return await conn.fetchval(
+            "SELECT url FROM picdata WHERE name = $1 AND 'globe' = ANY(scope) LIMIT 1;",
+            filename,
+        )
 
 
 async def savepic(
@@ -240,7 +242,12 @@ async def simpic(
 
 
 async def rename(
-    ori: str, des: str, source_scope: str, dest_scope: str, is_admin: bool = False
+    ori: str,
+    des: str,
+    source_scope: str,
+    dest_scope: str,
+    is_admin: bool = False,
+    vec: Optional[np.ndarray] = None,
 ):
     """重命名图片（包括修改作用域）
 
@@ -301,12 +308,13 @@ async def rename(
             "UPDATE picdata SET name = $1, scope = CASE "
             "WHEN $3 = 'globe' THEN ARRAY['globe']::text[] "
             "WHEN 'globe' = ANY(scope) AND $4 <> 'globe' THEN ARRAY[$4]::text[] "
-            "ELSE scope END, vec = CASE WHEN name <> $1 THEN NULL ELSE vec END "
+            "ELSE scope END, vec = CASE WHEN name <> $1 THEN $5 ELSE vec END "
             "WHERE name = $2 AND $3 = ANY(scope);",
             des,
             ori,
             source_scope,
             dest_scope,
+            str(vec.tolist()) if vec is not None else None,
         )
 
 

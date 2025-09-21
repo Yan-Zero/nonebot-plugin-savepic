@@ -1,11 +1,14 @@
 from nonebot import on_command
 from nonebot.params import CommandArg
-from nonebot.internal.adapter import Bot
+from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.utils import f2s
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
 from .rule import PIC_ADMIN
-from .core.sql import rename
+from .core.sql import rename, select_pic, check_uploader
+from .core.utils import img2vec
+from .core.fileio import load_pic
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
@@ -25,9 +28,6 @@ INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
 
 @s_mvpic.handle()
 async def _(bot: Bot, event: V11GME, args=CommandArg()):
-    if not (await PIC_ADMIN(bot, event) or await GROUP_ADMIN(bot, event)):
-        await s_mvpic.finish("没有权限")
-
     cmd = args.extract_plain_text().strip()
     name = []
     options = []
@@ -102,9 +102,9 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not options:
         options = ["l"]
 
-    if (not await PIC_ADMIN(bot, event)) and await GROUP_ADMIN(bot, event):
-        if "g" in options:
-            await s_mvpic.finish("管理员不能改全局名称哦~")
+    user = (
+        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
+    )
 
     sname = name[0]
     dname = name[1] if len(name) > 1 else sname
@@ -120,11 +120,33 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     dg = options[1] if len(options) > 1 else options[0]
     dg = "globe" if dg == "g" else f"qq_group:{event.group_id}"
 
+    if not (
+        await PIC_ADMIN(bot, event)
+        or await GROUP_ADMIN(bot, event)
+        or await check_uploader(
+            name[0],
+            sg,
+            user,
+        )
+    ):
+        await s_mvpic.finish("没有权限")
+
+    if not (await PIC_ADMIN(bot, event)) and "g" in options:
+        await s_mvpic.finish("不能改全局名称哦~\n尝试使用 -l 选项")
+
     if sname == dname and sg == dg:
         await s_mvpic.finish("嗯，什么都没有变化嘛。")
 
+    if sname != dname:
+        url = await select_pic(sname, sg, True)
+        if not url:
+            await s_mvpic.finish(f"\n{sname} 没有找到哦")
+        v = await img2vec(
+            await bot.call_api("upload_image", file=f2s(await load_pic(url))), dname
+        )
+
     try:
-        await rename(sname, dname, sg, dg)
+        await rename(sname, dname, sg, dg, is_admin=await PIC_ADMIN(bot, event), vec=v)
     except NoPictureException as ex:
         await s_mvpic.finish(f"\n{ex.name} 没有找到哦")
     except SameNameException:
