@@ -1,7 +1,6 @@
-import numpy as np
 import httpx
-import base64
-import imghdr
+import numpy as np
+
 from nonebot.log import logger
 
 from ..config import plugin_config
@@ -16,10 +15,12 @@ async def word2vec(word: str) -> np.ndarray | None:
                 plugin_config.embedding_url,
                 json={
                     "model": plugin_config.embedding_model,
-                    "input": {
-                        "type": "text",
-                        "text": word,
-                    },
+                    "input": [
+                        {
+                            "type": "text",
+                            "text": word,
+                        }
+                    ],
                 },
                 headers={
                     "Content-Type": "application/json",
@@ -38,7 +39,7 @@ async def word2vec(word: str) -> np.ndarray | None:
         return None
 
 
-async def img2vec(img: bytes | str, title: str = "") -> np.ndarray | None:
+async def img2vec(img: str, title: str = "") -> np.ndarray | None:
     # img 转为 base64 url，获取mime类型
     input = []
     if title:
@@ -48,33 +49,17 @@ async def img2vec(img: bytes | str, title: str = "") -> np.ndarray | None:
                 "text": f"Title of the image: {title}",
             }
         )
-    if isinstance(img, bytes):
-        mime = imghdr.what(img, h=img)
-        if not mime:
-            logger.error("Cannot recognize image type")
-            return None
+    if img.startswith("http"):
         input.append(
             {
                 "type": "image_url",
                 "image_url": {
-                    "url": f"data:{mime};base64,{base64.b64encode(img).decode()}"
+                    "url": img,
                 },
             }
         )
-    elif isinstance(img, str):
-        if img.startswith("http"):
-            input.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": img,
-                    },
-                }
-            )
-        else:
-            raise ValueError("img must be bytes or a valid URL string")
     else:
-        raise ValueError("img must be bytes or a valid URL string")
+        raise ValueError("img must be a valid URL string")
     async with httpx.AsyncClient() as client:
         try:
             rsp = await client.post(

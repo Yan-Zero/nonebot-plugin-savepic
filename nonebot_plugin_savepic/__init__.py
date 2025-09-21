@@ -1,12 +1,3 @@
-import random
-
-from typing import (
-    Any,
-    Union,
-    Callable,
-    Iterable,
-    Optional,
-)
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
@@ -14,22 +5,10 @@ from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
-from nonebot.dependencies import Dependent
-from nonebot.typing import (
-    T_State,
-    T_Handler,
-)
+from nonebot.typing import T_State
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
-from nonebot.consts import ARG_KEY
 from nonebot_plugin_alconna import on_alconna
-from nonebot.internal.params import Depends
-from nonebot.internal.adapter import (
-    Bot,
-    Event,
-    Message,
-    MessageSegment,
-    MessageTemplate,
-)
+from nonebot.internal.adapter import Bot
 
 from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
@@ -133,9 +112,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
 
     try:
         dir = await write_pic(picture[0].data["url"], plugin_config.savepic_dir)
-        img = await load_pic(dir)
     except Exception as ex:
-        await del_pic(dir)
         await spic.finish("存图失败。" + "\n" + str(ex))
 
     try:

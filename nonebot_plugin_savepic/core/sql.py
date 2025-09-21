@@ -130,15 +130,15 @@ async def savepic(
         if not collision_allow and vec is not None:
             row = await conn.fetchrow(
                 (
-                    "SELECT name, url, -(vec <#> $1::halfvec) AS similarity "
-                    "FROM picdata "
+                    "SELECT name, url, (1-(vec <=> $1::halfvec)) AS similarity FROM picdata "
                     "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) AND name <> '' "
+                    "AND similarity >= 0.6 "
                     "ORDER BY similarity DESC LIMIT 1;"
                 ),
                 str(vec.tolist()),
                 scope,
             )
-            if row and row["similarity"] >= 0.925:
+            if row and row["similarity"] >= 0.75:
                 raise SimilarPictureException(
                     row["name"], row["similarity"], row["url"]
                 )
@@ -191,7 +191,7 @@ LIMIT 1;"""
                 filename,
                 scope,
                 url,
-                str(vec.astype(np.float16).tolist()) if vec is not None else None,
+                str(vec.tolist()) if vec is not None else None,
                 uploader,
             )
             if filename != name:
@@ -199,7 +199,7 @@ LIMIT 1;"""
 
 
 async def simpic(
-    img_vec: np.ndarray, scope: str = "globe", ignore_min: bool = False
+    img_vec: np.ndarray, scope: str = "globe"
 ) -> tuple[float, Optional[PicData]]:
     """检索相似图片
 
@@ -224,14 +224,11 @@ async def simpic(
     async with POOL.acquire() as conn:
         row = await conn.fetchrow(
             (
-                "SELECT (1 - (vec <=> $1::halfvec)) AS similarity, name, url "
-                "FROM picdata "
+                "SELECT (1-(vec <=> $1::halfvec)) AS similarity, name, url FROM picdata "
                 "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
-                "AND name <> '' "
-                + ("" if ignore_min else "and vec <=> $1::halfvec < 0.35 ")
-                + "ORDER BY similarity DESC LIMIT 1;"
+                "AND name <> '' ORDER BY similarity DESC LIMIT 1;"
             ),
-            str(img_vec.astype(np.float16).tolist()),
+            str(img_vec.tolist()),
             scope,
         )
         if row:
@@ -391,7 +388,7 @@ async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
 
 
 async def randpic(
-    name: str, scope: str = "globe", vector: bool = False, threshold: float = 0.45
+    name: str, scope: str = "globe", vector: bool = False
 ) -> tuple[PicData | None, str]:
     name = name.strip().replace("%", r"\%").replace("_", r"\_")
     if not POOL:
@@ -446,14 +443,13 @@ async def randpic(
 
         row = await conn.fetchrow(
             (
-                "SELECT name, scope, url FROM picdata "
+                "SELECT name, scope, url, (1-(vec <=> $2::halfvec)) as similarity FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) AND name <> '' "
-                "AND vec IS NOT NULL AND vec <=> $2::halfvec <= $3::float "
-                "ORDER BY vec <#> $2::halfvec LIMIT 1;"
+                "AND vec IS NOT NULL "
+                "ORDER BY similarity DESC LIMIT 1;"
             ),
             scope,
-            str(v),
-            threshold,
+            str(v.tolist()),
         )
         if row:
             return (
@@ -462,7 +458,7 @@ async def randpic(
                     scope=row["scope"],
                     url=row["url"],
                 ),
-                "（语义向量相似度检索）",
+                f"（语义相似度检索，{row['similarity'] * 100:.2f}%）",
             )
     return None, ""
 
