@@ -1,4 +1,3 @@
-from pydantic import Field
 from pydantic import BaseModel
 from nonebot import get_plugin_config
 

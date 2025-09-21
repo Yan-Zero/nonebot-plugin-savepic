@@ -13,7 +13,7 @@ from nonebot.internal.adapter import Bot
 from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config
-from .config import plugin_config
+from .listpic import plugin_config
 from .command import url_to_image
 from .core.sql import savepic, regexp_pic
 from .core.utils import img2vec
