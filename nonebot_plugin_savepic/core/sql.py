@@ -126,7 +126,7 @@ async def savepic(
             scope,
         )
         if name:
-            raise SimilarPictureException(name, 1.0, url)
+            raise SimilarPictureException(name, float("inf"), url)
 
         # 从向量检索相似图片
         if not collision_allow and vec is not None:

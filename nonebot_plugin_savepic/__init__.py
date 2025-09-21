@@ -128,6 +128,8 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await del_pic(dir)
         await spic.finish("文件名重复")
     except SimilarPictureException as ex:
+        if ex.similarity == float("inf"):
+            await spic.finish("这图存过了，无法再保存")
         await del_pic(dir)
         try:
             image = await load_pic(ex.url)

@@ -7,6 +7,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Bot
 from nonebot.adapters import Message
 from nonebot.adapters import Event
+from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
@@ -19,6 +20,7 @@ cpic = on_command("countpic", priority=5)
 rpic = on_command("randpic", priority=5)
 s_simpic = on_command("simpic", priority=5)
 pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
+pic_clear = on_command("pic.clear", permission=SUPERUSER, priority=1, block=True)
 
 
 def url_to_image(url: str):
@@ -89,7 +91,9 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
     if not picture:
         await s_simpic.finish("请发送图片后再使用该指令喵~")
     try:
-        vec = await img2vec(picture[0].data["url"])
+        vec = await img2vec(
+            picture[0].data["url"], title=args.extract_plain_text().strip()
+        )
         if vec is None:
             await s_simpic.finish("图片特征提取失败喵~")
         group_id = (
@@ -108,3 +112,27 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         await s_simpic.send(V11Msg(ret))
     else:
         await s_simpic.send("没有找到相似的图片喵~")
+
+
+@pic_clear.handle()
+async def _(bot: Bot, event: Event):
+    # 清理孤儿图片
+    from .core import sql
+
+    if not sql.POOL:
+        await pic_clear.finish("数据库未初始化")
+    await pic_clear.send("开始清理孤儿图片...")
+    img = set(Path("savepic").glob("*"))
+    async with sql.POOL.acquire() as conn, conn.transaction():
+        async for record in conn.cursor("SELECT name, url FROM picdata;"):
+            if not record["url"].startswith("savepic/"):
+                continue
+            p = Path(record["url"])
+            img.remove(p)
+    if img:
+        await pic_clear.send(f"发现 {len(img)} 张孤儿图片，正在删除...")
+        for p in img:
+            p.unlink(missing_ok=True)
+        await pic_clear.send("删除完成！")
+    else:
+        await pic_clear.send("没有发现孤儿图片！")
