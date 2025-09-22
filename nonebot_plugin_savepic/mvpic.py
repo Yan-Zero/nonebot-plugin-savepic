@@ -122,19 +122,19 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     dg = options[1] if len(options) > 1 else options[0]
     dg = "globe" if dg == "g" else f"qq_group:{event.group_id}"
 
+    if not (await PIC_ADMIN(bot, event)) and "g" in options:
+        await s_mvpic.finish("不能改全局名称哦~\n尝试使用 -l 选项")
+
     if not (
         await PIC_ADMIN(bot, event)
         or await GROUP_ADMIN(bot, event)
         or await check_uploader(
-            name[0],
+            sname,
             sg,
             user,
         )
     ):
         await s_mvpic.finish("没有权限")
-
-    if not (await PIC_ADMIN(bot, event)) and "g" in options:
-        await s_mvpic.finish("不能改全局名称哦~\n尝试使用 -l 选项")
 
     if sname == dname and sg == dg:
         await s_mvpic.finish("嗯，什么都没有变化嘛。")

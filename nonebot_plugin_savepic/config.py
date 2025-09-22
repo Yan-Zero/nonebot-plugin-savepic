@@ -1,5 +1,6 @@
-from pydantic import BaseModel
+from typing import Optional
 from nonebot import get_plugin_config
+from pydantic import BaseModel
 
 
 class Config(BaseModel):
@@ -21,6 +22,9 @@ class Config(BaseModel):
     """ listpic 的时候合并转发 """
     max_page_in_listpic: int = 20
     """ 合并转发中所能显示的最大页数 """
+
+    cache_sqlurl: Optional[str] = None
+    """ 额外的只读连接池地址，若不填写则与 savepic_sqlurl 共用 """
 
 
 plugin_config: Config = get_plugin_config(Config)

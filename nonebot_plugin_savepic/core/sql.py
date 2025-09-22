@@ -17,6 +17,8 @@ from ..config import plugin_config
 
 gdriver = get_driver()
 POOL: Optional[asyncpg.Pool] = None
+POOL_LOCAL: asyncpg.Pool
+"""没啥特别的，单纯是订阅/发布模式用来加速读取的，不涉及 vec 的原子读操作理论上是走这个。"""
 
 
 @gdriver.on_startup
@@ -54,16 +56,16 @@ async def select_pic(filename: str, scope: str, strict: bool = False) -> Optiona
         logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
         return None
 
-    async with POOL.acquire() as conn:
+    async with POOL_LOCAL.acquire() as conn:
         ret = await conn.fetchval(
-            "SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope) LIMIT 1;",
+            "SELECT url FROM picdata WHERE name = $1 AND scope @> ARRAY[$2] LIMIT 1;",
             filename,
             scope,
         )
         if ret or strict:
             return ret
         return await conn.fetchval(
-            "SELECT url FROM picdata WHERE name = $1 AND 'globe' = ANY(scope) LIMIT 1;",
+            "SELECT url FROM picdata WHERE name = $1 AND scope @> ARRAY['globe'] LIMIT 1;",
             filename,
         )
 
@@ -112,7 +114,7 @@ async def savepic(
     async with POOL.acquire() as conn:
         # 判断是否存在相同名字的图片
         ret = await conn.fetchval(
-            "SELECT url FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+            "SELECT url FROM picdata WHERE name = $1 AND scope @> ARRAY[$2];",
             filename,
             scope,
         )
@@ -121,7 +123,7 @@ async def savepic(
 
         # 如果 URL 已经存在，且对应图片名字不为空，则相似图片错误
         name = await conn.fetchval(
-            "SELECT name FROM picdata WHERE url = $1 AND $2 = ANY(scope);",
+            "SELECT name FROM picdata WHERE url = $1 AND scope @> ARRAY[$2];",
             url,
             scope,
         )
@@ -156,7 +158,7 @@ SET
     scope = CASE
             WHEN EXCLUDED.scope = ARRAY['globe']::text[]
                 THEN ARRAY['globe']::text[]
-            WHEN NOT (EXCLUDED.scope[1] = ANY(picdata.scope))
+            WHEN NOT (picdata.scope @> EXCLUDED.scope)
                 THEN array_append(picdata.scope, EXCLUDED.scope[1])
             ELSE picdata.scope
             END,
@@ -251,7 +253,7 @@ async def rename(
     async with POOL.acquire() as conn:
         # 判断目标名字是否存在
         if not await conn.fetchval(
-            "SELECT 1 FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+            "SELECT 1 FROM picdata WHERE name = $1 AND scope @> ARRAY[$2];",
             ori,
             source_scope,
         ):
@@ -261,7 +263,7 @@ async def rename(
         if (
             not is_admin
             and await conn.fetchval(
-                "SELECT array_length(scope, 1) FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+                "SELECT array_length(scope, 1) FROM picdata WHERE name = $1 AND scope @> ARRAY[$2];",
                 ori,
                 source_scope,
             )
@@ -271,7 +273,7 @@ async def rename(
 
         # 判断目标名字是否存在
         if await conn.fetchval(
-            "SELECT 1 FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+            "SELECT 1 FROM picdata WHERE name = $1 AND scope @> ARRAY[$2];",
             des,
             dest_scope,
         ):
@@ -280,14 +282,14 @@ async def rename(
         await conn.execute(
             "UPDATE picdata SET name = $1, scope = CASE "
             "  WHEN $3 = 'globe' THEN ARRAY['globe']::text[] "
-            "  WHEN 'globe' = ANY(scope) THEN ARRAY[$3]::text[] "
+            "  WHEN scope @> ARRAY['globe'] THEN ARRAY[$3]::text[] "
             "  ELSE CASE "
-            "    WHEN $3 = ANY(array_remove(scope, $4)) "
+            "    WHEN array_remove(scope, $4) @> ARRAY[$3] "
             "        THEN array_remove(scope, $4) "
             "    ELSE array_append(array_remove(scope, $4), $3) "
             "  END END, "
             "vec = CASE WHEN name <> $1 THEN $5 ELSE vec END "
-            "WHERE name = $2 AND $4 = ANY(scope);",
+            "WHERE name = $2 AND scope @> ARRAY[$4];",
             des,
             ori,
             dest_scope,
@@ -317,7 +319,7 @@ async def delete(filename: str, scope: str):
 
     async with POOL.acquire() as conn:
         if not await conn.fetchval(
-            "SELECT 1 FROM picdata WHERE name = $1 AND $2 = ANY(scope);",
+            "SELECT 1 FROM picdata WHERE name = $1 AND scope @> ARRAY[$2];",
             filename,
             scope,
         ):
@@ -328,51 +330,10 @@ async def delete(filename: str, scope: str):
             scope,
         )
         await conn.execute(
-            "UPDATE picdata SET scope = array_remove(scope, $2) WHERE name = $1 AND $2 = ANY(scope);",
+            "UPDATE picdata SET scope = array_remove(scope, $2) WHERE name = $1 AND scope @> ARRAY[$2];",
             filename,
             scope,
         )
-
-
-async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
-    """根据正则表达式随机查询一张图片
-
-    Parameters
-    ----------
-    reg: str
-        正则表达式
-    scope: str
-        作用域
-
-    Returns
-    -------
-    Optional[PicData]
-        图片数据或 None
-    """
-    if not POOL:
-        logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
-        return None
-    reg = reg.strip()
-    if not reg:
-        reg = ".*"
-
-    async with POOL.acquire() as conn:
-        row = await conn.fetchrow(
-            (
-                "SELECT name, scope, url FROM picdata "
-                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
-                "AND name ~* $2 "
-                "ORDER BY random() LIMIT 1;"
-            ),
-            scope,
-            reg,
-        )
-        if row:
-            return PicData(
-                name=row["name"],
-                scope=row["scope"],
-                url=row["url"],
-            )
 
 
 async def randpic(
@@ -382,7 +343,9 @@ async def randpic(
     if not POOL:
         logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
         return None, ""
-    async with POOL.acquire() as conn:
+
+    # 优先从只读连接池查询
+    async with POOL_LOCAL.acquire() as conn:
         if not name:
             row = await conn.fetchrow(
                 (
@@ -422,13 +385,14 @@ async def randpic(
                 "",
             )
 
-        if not vector:
-            return None, ""
+    if not vector:
+        return None, ""
+    v = await word2vec(name)
+    if v is None:
+        return None, ""
 
-        v = await word2vec(name)
-        if v is None:
-            return None, ""
-
+    # 如果没有找到，且需要向量检索，则进行向量检索
+    async with POOL.acquire() as conn:
         row = await conn.fetchrow(
             (
                 "SELECT name, scope, url, (1-(vec <=> $2::halfvec)) as similarity FROM picdata "
@@ -448,6 +412,47 @@ async def randpic(
                 f"（语义相似度检索，{row['similarity'] * 100:.2f}%）",
             )
     return None, ""
+
+
+async def regexp_pic(reg: str, scope: str = "globe") -> Optional[PicData]:
+    """根据正则表达式随机查询一张图片
+
+    Parameters
+    ----------
+    reg: str
+        正则表达式
+    scope: str
+        作用域
+
+    Returns
+    -------
+    Optional[PicData]
+        图片数据或 None
+    """
+    if not POOL:
+        logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
+        return None
+    reg = reg.strip()
+    if not reg:
+        reg = ".*"
+
+    async with POOL_LOCAL.acquire() as conn:
+        row = await conn.fetchrow(
+            (
+                "SELECT name, scope, url FROM picdata "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND name ~* $2 "
+                "ORDER BY random() LIMIT 1;"
+            ),
+            scope,
+            reg,
+        )
+        if row:
+            return PicData(
+                name=row["name"],
+                scope=row["scope"],
+                url=row["url"],
+            )
 
 
 async def countpic(reg: str, scope: str = "globe") -> int:
@@ -474,7 +479,7 @@ async def countpic(reg: str, scope: str = "globe") -> int:
     if not reg:
         reg = ".*"
 
-    async with POOL.acquire() as conn:
+    async with POOL_LOCAL.acquire() as conn:
         return (
             await conn.fetchval(
                 (
@@ -526,10 +531,10 @@ async def listpic(
         1000,
     )
 
-    async with POOL.acquire() as conn:
+    async with POOL_LOCAL.acquire() as conn:
         row = await conn.fetch(
             (
-                "SELECT name, ('globe' = ANY(scope)) AS is_global FROM picdata "
+                "SELECT name, (scope @> ARRAY['globe']) AS is_global FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
                 "AND name ~* $2 ORDER BY name OFFSET $3 LIMIT $4;"
             ),
@@ -564,10 +569,10 @@ async def check_uploader(filename: str, scope: str, uploader: str) -> bool:
         logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
         return False
 
-    async with POOL.acquire() as conn:
+    async with POOL_LOCAL.acquire() as conn:
         return bool(
             await conn.fetchval(
-                "SELECT 1 FROM picdata WHERE name = $1 AND $2 = ANY(scope) AND uploader = $3;",
+                "SELECT 1 FROM picdata WHERE name = $1 AND scope @> ARRAY[$2] AND uploader = $3;",
                 filename,
                 scope,
                 uploader,
@@ -576,7 +581,7 @@ async def check_uploader(filename: str, scope: str, uploader: str) -> bool:
 
 
 async def init_db():
-    global POOL
+    global POOL, POOL_LOCAL
     POOL = await asyncpg.create_pool(
         plugin_config.savepic_sqlurl,
         min_size=1,
@@ -584,6 +589,16 @@ async def init_db():
         timeout=60,
         max_inactive_connection_lifetime=300,
     )
+    if plugin_config.cache_sqlurl:
+        POOL_LOCAL = await asyncpg.create_pool(
+            plugin_config.cache_sqlurl,
+            min_size=1,
+            max_size=10,
+            timeout=60,
+            max_inactive_connection_lifetime=300,
+        )
+    else:
+        POOL_LOCAL = POOL
 
     async def create_table(pool: asyncpg.Pool):
         async with pool.acquire() as conn:
@@ -623,3 +638,14 @@ async def init_db():
                 logger.info("已创建 picdata 表的索引")
 
     await create_table(POOL)
+
+    # 判断只读池是否有表 picdata，没有则改用主池
+    if POOL_LOCAL is not POOL:
+        async with POOL_LOCAL.acquire() as conn:
+            if not await conn.fetchval(
+                "SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'picdata');"
+            ):
+                logger.warning(
+                    "只读连接池中不存在 picdata 表，改用主连接池作为只读连接池"
+                )
+                POOL_LOCAL = POOL
