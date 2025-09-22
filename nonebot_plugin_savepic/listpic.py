@@ -15,7 +15,7 @@ from .core.sql import listpic, delete, check_uploader
 
 rmpic = on_alconna(
     Alconna(
-        "/rmpic",
+        "rmpic",
         Option("-g", help_text="是否为全局图片，需要权限。"),
         Args.filename[str],  # type: ignore
         meta=CommandMeta(
@@ -24,6 +24,7 @@ rmpic = on_alconna(
     ),
     priority=5,
     block=True,
+    use_cmd_start=True,
 )
 s_listpic = on_command("listpic", priority=5)
 

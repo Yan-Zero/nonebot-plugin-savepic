@@ -7,7 +7,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
-from nonebot_plugin_alconna import on_alconna
+from nonebot_plugin_alconna import on_alconna, Image
 from nonebot.internal.adapter import Bot
 
 from .rule import PIC_ADMIN
@@ -40,12 +40,14 @@ __plugin_meta__ = PluginMetadata(
 repic = on_command("repic", priority=5)
 spic = on_alconna(
     Alconna(
-        "/savepic",
+        "savepic",
         Option("-g", help_text="全局"),
         Option("-ac", help_text="允许相似碰撞"),
-        Args.filename[str],  # type: ignore
+        Args["filename", str]["picture?", Image],
         meta=CommandMeta(description="保存图片，默认保存到本群"),
-    )
+    ),
+    use_cmd_start=True,
+    skip_for_unmatch=False,
 )
 
 
@@ -111,7 +113,12 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await spic.finish("6，这也不是图啊")
 
     try:
-        dir = await write_pic(picture[0].data["url"], plugin_config.savepic_dir)
+        url = (
+            picture[0].data["url"]
+            if "url" in picture[0].data
+            else picture[0].data["file"]
+        )
+        dir = await write_pic(url, plugin_config.savepic_dir)
     except Exception as ex:
         await spic.finish("存图失败。" + "\n" + str(ex))
 
@@ -121,7 +128,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
             url=dir,
             scope=state["savepiv_group"],
             uploader=f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}",
-            vec=await img2vec(picture[0].data["url"], state["savepiv_filename"]),
+            vec=await img2vec(url, state["savepiv_filename"]),
             collision_allow=state["savepiv_ac"],
         )
     except SameNameException:
@@ -144,7 +151,6 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
                 ]
             )
         )
-
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
