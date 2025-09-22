@@ -649,3 +649,6 @@ async def init_db():
                     "只读连接池中不存在 picdata 表，改用主连接池作为只读连接池"
                 )
                 POOL_LOCAL = POOL
+
+    if POOL_LOCAL is not POOL:
+        logger.info("使用了独立的只读连接池，请确保设定了数据库的同步复制。")

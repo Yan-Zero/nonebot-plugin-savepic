@@ -14,7 +14,6 @@ from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
 from .core.sql import simpic, randpic, countpic, select_pic
 from .core.utils import img2vec
-from .core.fileio import load_pic
 
 cpic = on_command("countpic", priority=5)
 rpic = on_command("randpic", priority=5)
@@ -23,7 +22,7 @@ pic_listen = on_endswith((".jpg", ".png", ".gif"), priority=50, block=False)
 pic_clear = on_command("pic.clear", permission=SUPERUSER, priority=1, block=True)
 
 
-def url_to_image(url: str):
+async def url_to_image(url: str) -> V11Seg:
     if url.startswith("http"):
         return V11Seg.image(url)
     return V11Seg.image(Path(url))
@@ -49,8 +48,7 @@ async def _(bot: Bot, event: Event):
     )
     try:
         if url := await select_pic(name, group_id):
-            file_ = await load_pic(url)
-            await pic_listen.send(V11Seg.image(file=file_))
+            await pic_listen.send(await url_to_image(url))
     except Exception as ex:
         await pic_listen.finish(str(ex))
 
@@ -70,7 +68,7 @@ async def _(bot: Bot, event: Event, args: V11Msg = CommandArg()):
             V11Msg(
                 [
                     V11Seg.text(pic.name + ("\n" + t if t else "")),
-                    url_to_image(pic.url),
+                    await url_to_image(pic.url),
                 ]
             )
         )
@@ -108,7 +106,7 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         if event.reply:  # type: ignore
             ret.append(V11Seg.reply(event.reply.message_id))  # type: ignore
         ret.append(f"{pic.name}\n(相似性：{'%.4g' % (min(sim * 100, 100.0))}%)")
-        ret.append(url_to_image(pic.url))
+        ret.append(await url_to_image(pic.url))
         await s_simpic.send(V11Msg(ret))
     else:
         await s_simpic.send("没有找到相似的图片喵~")

@@ -19,7 +19,7 @@ from .core.sql import savepic, regexp_pic
 from .core.utils import img2vec
 from .core.error import SameNameException
 from .core.error import SimilarPictureException
-from .core.fileio import write_pic, load_pic, del_pic
+from .core.fileio import write_pic, del_pic
 
 
 __plugin_meta__ = PluginMetadata(
@@ -60,7 +60,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
     try:
         if pic := await regexp_pic(reg, group_id):
             await bot.send(
-                event, V11Msg([V11Seg.text(pic.name), url_to_image(pic.url)])
+                event, V11Msg([V11Seg.text(pic.name), await url_to_image(pic.url)])
             )
     except Exception as ex:
         await repic.finish(f"出错了。{ex}")
@@ -131,10 +131,6 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         if ex.similarity == float("inf"):
             await spic.finish("这图存过了，无法再保存")
         await del_pic(dir)
-        try:
-            image = await load_pic(ex.url)
-        except Exception as exc:
-            await spic.finish(f"出错了。{exc}")
         await spic.finish(
             V11Msg(
                 [
@@ -144,10 +140,11 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
                         + ex.name
                         + f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n"
                     ),
-                    V11Seg.image(file=image),
+                    await url_to_image(ex.url),
                 ]
             )
         )
+
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")

@@ -1,3 +1,4 @@
+from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
@@ -9,7 +10,6 @@ from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 from .rule import PIC_ADMIN
 from .core.sql import rename, select_pic, check_uploader
 from .core.utils import img2vec
-from .core.fileio import load_pic
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
@@ -145,7 +145,10 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
         if not url:
             await s_mvpic.finish(f"{sname} 没有找到哦")
         v = await img2vec(
-            await bot.call_api("upload_image", file=f2s(await load_pic(url))), dname
+            await bot.call_api(
+                "upload_image", file=f2s(url if url.startswith("http") else Path(url))
+            ),
+            dname,
         )
 
     try:
@@ -185,7 +188,12 @@ async def _(bot: Bot):
                 try:
                     vec = await img2vec(
                         await bot.call_api(
-                            "upload_image", file=f2s(await load_pic(record["url"]))
+                            "upload_image",
+                            file=f2s(
+                                record["url"]
+                                if record["url"].startswith("http")
+                                else Path(record["url"])
+                            ),
                         ),
                         record["name"],
                     )
