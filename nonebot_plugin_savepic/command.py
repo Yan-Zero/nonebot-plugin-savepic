@@ -12,6 +12,7 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
+from .listpic import rkey
 from .core.sql import simpic, randpic, countpic, select_pic
 from .core.utils import img2vec
 
@@ -90,7 +91,8 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
         await s_simpic.finish("请发送图片后再使用该指令喵~")
     try:
         vec = await img2vec(
-            picture[0].data["url"], title=args.extract_plain_text().strip()
+            await rkey(bot, picture[0].data["url"]),
+            title=args.extract_plain_text().strip(),
         )
         if vec is None:
             await s_simpic.finish("图片特征提取失败喵~")

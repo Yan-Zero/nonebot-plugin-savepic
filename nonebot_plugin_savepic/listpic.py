@@ -1,4 +1,6 @@
 from nonebot import on_command
+from datetime import datetime, timedelta
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot.params import CommandArg
 from nonebot_plugin_alconna import on_alconna
@@ -27,6 +29,31 @@ rmpic = on_alconna(
     use_cmd_start=True,
 )
 s_listpic = on_command("listpic", priority=5)
+RKEY: dict[str, tuple[datetime, str]] = {
+    "group": (datetime.min, ""),
+    "private": (datetime.min, ""),
+}
+
+
+async def rkey(bot: Bot, url: str) -> str:
+    if not url.startswith(
+        (
+            "https://multimedia.nt.qq.com.cn",
+            "http://multimedia.nt.qq.com.cn",
+        )
+    ):
+        return url
+    if RKEY.get("group", (datetime.min, ""))[0] < datetime.now():
+        for item in (await bot.call_api("get_rkey")).get("rkeys", []):
+            RKEY[item.get("type")] = (
+                datetime.fromtimestamp(item.get("created_at", 0))
+                + timedelta(seconds=item.get("ttl", 0) - 300),
+                item.get("rkey", "")[6:],
+            )
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    params["rkey"] = [RKEY.get("group", (None, ""))[1]]
+    return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
 
 
 @s_listpic.handle()

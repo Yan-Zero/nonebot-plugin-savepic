@@ -12,8 +12,8 @@ from nonebot.internal.adapter import Bot
 
 from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
-from .config import Config
-from .listpic import plugin_config
+from .config import Config, plugin_config
+from .listpic import rkey
 from .command import url_to_image
 from .core.sql import savepic, regexp_pic
 from .core.utils import img2vec
@@ -113,10 +113,13 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await spic.finish("6，这也不是图啊")
 
     try:
-        url = (
-            picture[0].data["url"]
-            if "url" in picture[0].data
-            else picture[0].data["file"]
+        url = await rkey(
+            bot,
+            (
+                picture[0].data["url"]
+                if "url" in picture[0].data
+                else picture[0].data["file"]
+            ),
         )
         dir = await write_pic(url, plugin_config.savepic_dir)
     except Exception as ex:
@@ -135,8 +138,15 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await del_pic(dir)
         await spic.finish("文件名重复")
     except SimilarPictureException as ex:
-        if ex.similarity == float("inf"):
-            await spic.finish("这图存过了，无法再保存")
+        if ex.similarity >= 0.999:
+            await spic.finish(
+                V11Msg(
+                    [
+                        V11Seg.text("这图存过了，无法再保存" + "\n\n" + ex.name + "\n"),
+                        await url_to_image(ex.url),
+                    ]
+                )
+            )
         await del_pic(dir)
         await spic.finish(
             V11Msg(
@@ -154,6 +164,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")
+
     if r:
         await spic.send(f"保存成功，但是名字为`{r}`")
     else:

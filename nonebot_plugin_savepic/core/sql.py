@@ -123,7 +123,7 @@ async def savepic(
 
         # 如果 URL 已经存在，且对应图片名字不为空，则相似图片错误
         name = await conn.fetchval(
-            "SELECT name FROM picdata WHERE url = $1 AND scope @> ARRAY[$2];",
+            "SELECT name FROM picdata WHERE url = $1 AND scope && ARRAY[$2, 'globe'];",
             url,
             scope,
         )
