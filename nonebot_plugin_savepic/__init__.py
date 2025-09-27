@@ -10,6 +10,7 @@ from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot_plugin_alconna import on_alconna, Image
 from nonebot.internal.adapter import Bot
 
+from .fun import cipr  # noqa: F401
 from .rule import PIC_ADMIN
 from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import Config, plugin_config

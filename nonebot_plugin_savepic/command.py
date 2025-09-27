@@ -115,7 +115,7 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
 
 
 @pic_clear.handle()
-async def _(bot: Bot, event: Event):
+async def _():
     # 清理孤儿图片
     from .core import sql
 

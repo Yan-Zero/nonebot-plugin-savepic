@@ -134,9 +134,9 @@ async def savepic(
         if not collision_allow and vec is not None:
             row = await conn.fetchrow(
                 (
-                    "SELECT name, url, (1-(vec <=> $1::halfvec)) AS similarity FROM picdata "
+                    "SELECT name, url, -(vec <#> $1::halfvec) AS similarity FROM picdata "
                     "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
-                    "AND (1-(vec <=> $1::halfvec)) >= 0.6 "
+                    "AND -(vec <#> $1::halfvec) >= 0.6 "
                     "ORDER BY similarity DESC LIMIT 1;"
                 ),
                 str(vec.tolist()),
@@ -201,7 +201,7 @@ async def simpic(
     async with POOL.acquire() as conn:
         row = await conn.fetchrow(
             (
-                "SELECT (1-(vec <=> $1::halfvec)) AS similarity, name, url FROM picdata "
+                "SELECT -(vec <#> $1::halfvec) AS similarity, name, url FROM picdata "
                 "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
                 "ORDER BY similarity DESC LIMIT 1;"
             ),
@@ -393,16 +393,59 @@ async def randpic(
 
     # 如果没有找到，且需要向量检索，则进行向量检索
     async with POOL.acquire() as conn:
-        row = await conn.fetchrow(
+        rows = await conn.fetch(
             (
-                "SELECT name, scope, url, (1-(vec <=> $2::halfvec)) as similarity FROM picdata "
+                "SELECT name, scope, url, -(vec <#> $2::halfvec) as similarity FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
-                "AND vec IS NOT NULL ORDER BY similarity DESC LIMIT 1;"
+                "AND vec IS NOT NULL ORDER BY similarity DESC LIMIT 5;"
             ),
             scope,
             str(v.tolist()),
         )
-        if row:
+        if rows:
+            p = np.exp(np.array([1 + row["similarity"] for row in rows]) ** 2 / 0.2)
+            row = rows[
+                np.random.choice(
+                    a=len(rows),
+                    p=p / p.sum(),
+                )
+            ]
+            return (
+                PicData(
+                    name=row["name"],
+                    scope=row["scope"],
+                    url=row["url"],
+                ),
+                f"（语义相似度检索，{row['similarity'] * 100:.2f}%）",
+            )
+    return None, ""
+
+
+async def cipdnar(name: str, scope: str = "globe") -> tuple[PicData | None, str]:
+    if not POOL:
+        logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
+        return None, ""
+    v = await word2vec(name)
+    if v is None:
+        return None, ""
+    async with POOL.acquire() as conn:
+        rows = await conn.fetch(
+            (
+                "SELECT name, scope, url, -(vec <#> $2::halfvec) as similarity FROM picdata "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND vec IS NOT NULL ORDER BY similarity LIMIT 5;"
+            ),
+            scope,
+            str(v.tolist()),
+        )
+        if rows:
+            p = np.exp(np.array([abs(row["similarity"]) for row in rows]) ** 2 / 0.2)
+            row = rows[
+                np.random.choice(
+                    a=len(rows),
+                    p=p / p.sum(),
+                )
+            ]
             return (
                 PicData(
                     name=row["name"],
