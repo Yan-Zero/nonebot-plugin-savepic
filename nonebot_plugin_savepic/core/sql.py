@@ -393,16 +393,23 @@ async def randpic(
 
     # 如果没有找到，且需要向量检索，则进行向量检索
     async with POOL.acquire() as conn:
-        row = await conn.fetchrow(
+        rows = await conn.fetch(
             (
                 "SELECT name, scope, url, (1-(vec <=> $2::halfvec)) as similarity FROM picdata "
                 "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
-                "AND vec IS NOT NULL ORDER BY similarity DESC LIMIT 1;"
+                "AND vec IS NOT NULL ORDER BY similarity DESC LIMIT 5;"
             ),
             scope,
             str(v.tolist()),
         )
-        if row:
+        if rows:
+            p = np.exp(np.array([row["similarity"] for row in rows]) ** 2 / 0.2)
+            row = rows[
+                np.random.choice(
+                    a=len(rows),
+                    p=p / p.sum(),
+                )
+            ]
             return (
                 PicData(
                     name=row["name"],
