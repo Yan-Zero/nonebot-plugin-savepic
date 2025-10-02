@@ -176,7 +176,7 @@ RETURNING name;""",
 
 
 async def simpic(
-    img_vec: np.ndarray, scope: str = "globe"
+    img_vec: np.ndarray, scope: str = "globe", sort_asc: bool = False
 ) -> tuple[float, Optional[PicData]]:
     """检索相似图片
 
@@ -203,7 +203,7 @@ async def simpic(
             (
                 "SELECT -(vec <#> $1::halfvec) AS similarity, name, url FROM picdata "
                 "WHERE vec IS NOT NULL AND (scope && ARRAY[$2, 'globe']::text[]) "
-                "ORDER BY similarity DESC LIMIT 1;"
+                f"ORDER BY similarity {'ASC' if sort_asc else 'DESC'} LIMIT 1;"
             ),
             str(img_vec.tolist()),
             scope,

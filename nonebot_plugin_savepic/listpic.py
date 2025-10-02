@@ -19,7 +19,7 @@ rmpic = on_alconna(
     Alconna(
         "rmpic",
         Option("-g", help_text="是否为全局图片，需要权限。"),
-        Args.filename[str],  # type: ignore
+        Args["filename", str],
         meta=CommandMeta(
             description="删除已保存的图片。管理员和上传者可删除群内图片。"
         ),

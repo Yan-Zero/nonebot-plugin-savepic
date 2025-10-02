@@ -26,5 +26,8 @@ class Config(BaseModel):
     cache_sqlurl: Optional[str] = None
     """ 额外的只读连接池地址，若不填写则与 savepic_sqlurl 共用 """
 
+    normalize_vector: Optional[str] = None
+    """ 向量归一化，路径指向一个 txt 文件，文件内是均值向量 """
+
 
 plugin_config: Config = get_plugin_config(Config)

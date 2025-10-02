@@ -1,9 +1,22 @@
 import httpx
 import numpy as np
 
+from pathlib import Path
 from nonebot.log import logger
 
 from ..config import plugin_config
+
+
+MEAN_VECTOR = None
+
+if plugin_config.normalize_vector and Path(plugin_config.normalize_vector).exists():
+    with open(plugin_config.normalize_vector, "r") as f:
+        # 读取均值向量，是list[float]
+        _ = f.read().strip()
+        if _.startswith("[") and _.endswith("]"):
+            _ = _[1:-1]
+        MEAN_VECTOR = np.array([float(x) for x in _.split(",")])
+        logger.info(f"Loaded mean vector from {plugin_config.normalize_vector}")
 
 
 async def word2vec(word: str) -> np.ndarray | None:
@@ -33,10 +46,15 @@ async def word2vec(word: str) -> np.ndarray | None:
             logger.warning(f"Network seems down, cannot access internet: {e}")
             return None
     try:
-        return np.array(data["data"]["embedding"])
+        ret = np.array(data["data"]["embedding"])
     except Exception as e:
         logger.error(f"Error while embedding word: {word}, {e}")
         return None
+    if MEAN_VECTOR is not None and len(MEAN_VECTOR) == len(ret):
+        ret = ret - MEAN_VECTOR
+        # 归一化
+        ret = ret / np.linalg.norm(ret)
+    return ret
 
 
 async def img2vec(img: str, title: str = "") -> np.ndarray | None:
@@ -79,7 +97,12 @@ async def img2vec(img: str, title: str = "") -> np.ndarray | None:
             logger.warning(f"Network seems down, cannot access internet: {e}")
             return None
     try:
-        return np.array(data["data"]["embedding"])
+        ret = np.array(data["data"]["embedding"])
     except Exception as e:
         logger.error(f"Error while embedding image: {title}, {e}")
         return None
+    if MEAN_VECTOR is not None and len(MEAN_VECTOR) == len(ret):
+        ret = ret - MEAN_VECTOR
+        # 归一化
+        ret = ret / np.linalg.norm(ret)
+    return ret
