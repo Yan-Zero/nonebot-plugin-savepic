@@ -1,3 +1,5 @@
+import shlex
+
 from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.params import CommandArg
@@ -9,7 +11,7 @@ from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
 from .rule import PIC_ADMIN
 from .core.sql import rename, select_pic, check_uploader
-from .core.utils import img2vec
+from .core.utils import img2vec, upload_image
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
@@ -34,73 +36,23 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     name = []
     options = []
 
-    def parser():
-        pos = 0
-        nonlocal cmd, name, options
+    try:
+        tokens = shlex.split(cmd)
+        if tokens[0] == "mvpic":
+            tokens = tokens[1:]
+    except Exception:
+        await s_mvpic.finish("参数解析错误")
+    if not tokens:
+        await s_mvpic.finish("参数不能为空")
 
-        def _str(t: str) -> str:
-            nonlocal pos, cmd
+    for token in tokens:
+        if token.startswith("-") and all(c in "lg" for c in token[1:]):
+            options.extend(list(token[1:]))
+        else:
+            name.append(token)
 
-            result = ""
-            pos += 1
-            while pos < len(cmd):
-                if cmd[pos] == t:
-                    break
-                if not t and not cmd[pos].strip():
-                    break
-
-                if cmd[pos] == "\\":
-                    pos += 1
-                    if pos >= len(cmd):
-                        result += "\\"
-                        break
-                    elif cmd[pos] == "'":
-                        result += "'"
-                    elif cmd[pos] == '"':
-                        result += '"'
-                    elif cmd[pos] == "t":
-                        result += "\t"
-                    elif cmd[pos] == "n":
-                        result += "\n"
-                    elif cmd[pos] == "r":
-                        result += "\r"
-                    elif cmd[pos] == "\\":
-                        result += "\\"
-                    else:
-                        result += "\\"
-                        pos -= 1
-                else:
-                    result += cmd[pos]
-                pos += 1
-            pos += 1
-            return result
-
-        def _options() -> list[str]:
-            nonlocal pos, cmd
-
-            pos += 1
-            result = []
-            while pos < len(cmd) and cmd[pos].strip():
-                result.append(cmd[pos])
-                pos += 1
-            return result
-
-        while pos < len(cmd):
-            if cmd[pos] == "'":
-                name.append(_str("'"))
-            elif not cmd[pos].strip():
-                pos += 1
-            elif cmd[pos] == "-":
-                options.extend(_options())
-            elif cmd[pos] == '"':
-                name.append(_str('"'))
-            else:
-                pos -= 1
-                name.append(_str(""))
-
-    parser()
-    if not name:
-        await s_mvpic.finish("文件名呢？")
+    if len(name) not in (1, 2):
+        await s_mvpic.finish("文件名必须是一个或两个")
     if not options:
         options = ["l"]
 
@@ -144,12 +96,10 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
         url = await select_pic(sname, sg, True)
         if not url:
             await s_mvpic.finish(f"{sname} 没有找到哦")
-        v = await img2vec(
-            await bot.call_api(
-                "upload_image", file=f2s(url if url.startswith("http") else Path(url))
-            ),
-            dname,
-        )
+        url = await upload_image(url if url.startswith("http") else Path(url))
+        if not url:
+            await s_mvpic.finish("图片上传失败，无法获取特征向量")
+        v = await img2vec(url, dname)
 
     try:
         await rename(sname, dname, sg, dg, is_admin=await PIC_ADMIN(bot, event), vec=v)
@@ -186,17 +136,15 @@ async def _(bot: Bot):
                         f"已完成 {finish}/{count} 张图片的特征向量更新"
                     )
                 try:
-                    vec = await img2vec(
-                        await bot.call_api(
-                            "upload_image",
-                            file=f2s(
-                                record["url"]
-                                if record["url"].startswith("http")
-                                else Path(record["url"])
-                            ),
-                        ),
-                        record["name"],
+                    url = await upload_image(
+                        record["url"]
+                        if record["url"].startswith("http")
+                        else Path(record["url"])
                     )
+                    if not url:
+                        logger.warning(f"图片 {record['name']} 上传失败，跳过")
+                        continue
+                    vec = await img2vec(url, record["name"])
                     if vec is None:
                         logger.warning(f"图片 {record['name']} 特征提取失败，跳过")
                         continue

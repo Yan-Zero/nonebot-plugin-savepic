@@ -106,3 +106,28 @@ async def img2vec(img: str, title: str = "") -> np.ndarray | None:
         # 归一化
         ret = ret / np.linalg.norm(ret)
     return ret
+
+
+async def upload_image(img: bytes | Path | str) -> str | None:
+    """上传图片到图床，返回图片URL"""
+    if isinstance(img, Path):
+        if not img.exists():
+            return None
+        img = img.read_bytes()
+    elif isinstance(img, str):
+        if img.startswith("http"):
+            return img
+        p = Path(img)
+        if not p.exists():
+            return None
+        img = p.read_bytes()
+    files = {"file": img}
+    async with httpx.AsyncClient() as client:
+        try:
+            rsp = await client.post("https://tmpfiles.org/api/v1/upload", files=files)
+            rsp.raise_for_status()
+            data = rsp.json()
+            return data["data"]["url"]
+        except Exception as e:
+            logger.warning(f"Network seems down, cannot access internet: {e}")
+            return None
