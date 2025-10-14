@@ -11,7 +11,6 @@ from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
 from .rule import PIC_ADMIN
-from .mvpic import INVALID_FILENAME_CHARACTERS
 from .config import plugin_config
 from .core.sql import listpic, delete, check_uploader
 
@@ -121,8 +120,8 @@ async def _(bot: Bot, event: V11GME, command: Arparma):
     filename = command.filename
     if not isinstance(filename, str):
         await rmpic.finish("文件名无效")
-    for c in INVALID_FILENAME_CHARACTERS:
-        filename = filename.replace(c, "-")
+    # for c in INVALID_FILENAME_CHARACTERS:
+    #     filename = filename.replace(c, "-")
     if not filename.endswith((".jpg", ".png", ".gif")):
         filename += ".jpg"
 

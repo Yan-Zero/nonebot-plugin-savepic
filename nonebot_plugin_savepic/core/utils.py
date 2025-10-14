@@ -1,6 +1,7 @@
 import httpx
 import numpy as np
 
+from io import BytesIO
 from pathlib import Path
 from nonebot.log import logger
 
@@ -108,7 +109,9 @@ async def img2vec(img: str, title: str = "") -> np.ndarray | None:
     return ret
 
 
-async def upload_image(img: bytes | Path | str) -> str | None:
+async def upload_image(
+    img: bytes | Path | str, filename: str = "image.png"
+) -> str | None:
     """上传图片到图床，返回图片URL"""
     if isinstance(img, Path):
         if not img.exists():
@@ -121,13 +124,14 @@ async def upload_image(img: bytes | Path | str) -> str | None:
         if not p.exists():
             return None
         img = p.read_bytes()
-    files = {"file": img}
+    files = {"file": (filename, BytesIO(img), "application/octet-stream")}
     async with httpx.AsyncClient() as client:
         try:
             rsp = await client.post("https://tmpfiles.org/api/v1/upload", files=files)
             rsp.raise_for_status()
             data = rsp.json()
-            return data["data"]["url"]
+            logger.info(f"Uploaded image to {data}")
+            return data["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
         except Exception as e:
             logger.warning(f"Network seems down, cannot access internet: {e}")
             return None

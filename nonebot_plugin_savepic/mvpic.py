@@ -5,7 +5,6 @@ from nonebot import on_command, logger
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.utils import f2s
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
 from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
 
@@ -15,7 +14,7 @@ from .core.utils import img2vec, upload_image
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
-INVALID_FILENAME_CHARACTERS = r'\/:*?"<>|'
+# INVALID_FILENAME_CHARACTERS = r''
 s_mvpic = on_command("mvpic", priority=5)
 update_vec = on_command("pic.vec.update", permission=SUPERUSER, priority=1, block=True)
 
@@ -62,9 +61,9 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
 
     sname = name[0]
     dname = name[1] if len(name) > 1 else sname
-    for c in INVALID_FILENAME_CHARACTERS:
-        sname = sname.replace(c, "-")
-        dname = dname.replace(c, "-")
+    # for c in INVALID_FILENAME_CHARACTERS:
+    #     sname = sname.replace(c, "-")
+    #     dname = dname.replace(c, "-")
     if not sname.endswith((".jpg", ".png", ".gif")):
         sname += ".jpg"
     if not dname.endswith((".jpg", ".png", ".gif")):

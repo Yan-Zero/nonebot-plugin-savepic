@@ -12,7 +12,7 @@ from nonebot.internal.adapter import Bot
 
 from .fun import cipr  # noqa: F401
 from .rule import PIC_ADMIN
-from .mvpic import INVALID_FILENAME_CHARACTERS
+from .mvpic import logger  # noqa: F401
 from .config import Config, plugin_config
 from .listpic import rkey
 from .command import url_to_image
@@ -83,8 +83,8 @@ async def _(
     filename = command.filename
     if not isinstance(filename, str):
         await spic.finish("文件名无效")
-    for c in INVALID_FILENAME_CHARACTERS:
-        filename = filename.replace(c, "-")
+    # for c in INVALID_FILENAME_CHARACTERS:
+    #     filename = filename.replace(c, "-")
     if not filename.endswith((".jpg", ".png", ".gif")):
         filename += ".jpg"
 
