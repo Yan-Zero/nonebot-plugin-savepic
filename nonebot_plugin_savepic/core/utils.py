@@ -130,7 +130,6 @@ async def upload_image(
             rsp = await client.post("https://tmpfiles.org/api/v1/upload", files=files)
             rsp.raise_for_status()
             data = rsp.json()
-            logger.info(f"Uploaded image to {data}")
             return data["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
         except Exception as e:
             logger.warning(f"Network seems down, cannot access internet: {e}")

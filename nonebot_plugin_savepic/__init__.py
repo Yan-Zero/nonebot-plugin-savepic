@@ -12,7 +12,6 @@ from nonebot.internal.adapter import Bot
 
 from .fun import cipr  # noqa: F401
 from .rule import PIC_ADMIN
-from .mvpic import logger  # noqa: F401
 from .config import Config, plugin_config
 from .listpic import rkey
 from .command import url_to_image

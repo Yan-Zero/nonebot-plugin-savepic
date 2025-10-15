@@ -11,6 +11,7 @@ from nonebot.adapters.onebot.v11.message import Message as V11Msg
 from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
 from .rule import PIC_ADMIN
+from .mvpic import logger
 from .config import plugin_config
 from .core.sql import listpic, delete, check_uploader
 
@@ -43,10 +44,18 @@ async def rkey(bot: Bot, url: str) -> str:
     ):
         return url
     if RKEY.get("group", (datetime.min, ""))[0] < datetime.now():
-        for item in (await bot.call_api("get_rkey")).get("rkeys", []):
+        ret = await bot.call_api("get_rkey")
+        if isinstance(ret, dict):
+            ret = ret.get("rkeys", [])
+        elif isinstance(ret, list):
+            pass
+        else:
+            logger.warning(f"get_rkey 返回了奇怪的东西: {ret}")
+            ret = []
+        for item in ret:
             RKEY[item.get("type")] = (
-                datetime.fromtimestamp(item.get("created_at", 0))
-                + timedelta(seconds=item.get("ttl", 0) - 300),
+                datetime.fromtimestamp(int(item.get("created_at", 0)))
+                + timedelta(seconds=int(item.get("ttl", 0)) - 300),
                 item.get("rkey", "")[6:],
             )
     parsed = urlparse(url)
