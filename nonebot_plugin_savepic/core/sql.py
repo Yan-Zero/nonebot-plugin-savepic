@@ -537,6 +537,78 @@ async def countpic(reg: str, scope: str = "globe") -> int:
         )
 
 
+async def search_pic(
+    query: str, scope: str = "globe", limit: int = 10, vector: bool = True
+) -> list[tuple[PicData, Optional[float]]]:
+    """
+    搜索图片，先按名字模糊匹配，不足 limit 时用向量检索补齐
+
+    Parameters
+    ----------
+    query: str
+        关键词
+    scope: str
+        作用域
+    limit: int
+        最多返回多少条
+    vector: bool
+        是否启用向量检索
+
+    Returns
+    -------
+    list[tuple[PicData, Optional[float]]]
+        (图片数据, 语义相似度) 列表，名字匹配的结果相似度为 None
+    """
+    if not POOL:
+        logger.warning("未配置 savepic_sqlurl，无法使用查询功能")
+        return []
+
+    query = query.strip()
+    if not query or limit <= 0:
+        return []
+
+    async with POOL_LOCAL.acquire() as conn:
+        rows = await conn.fetch(
+            (
+                "SELECT name, scope, url FROM picdata "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND name ILIKE $2 "
+                "ORDER BY length(name), name LIMIT $3;"
+            ),
+            scope,
+            "%" + query.replace("%", r"\%").replace("_", r"\_") + "%",
+            limit,
+        )
+    ret: list[tuple[PicData, Optional[float]]] = [
+        (PicData(name=r["name"], scope=r["scope"], url=r["url"]), None) for r in rows
+    ]
+    if len(ret) >= limit or not vector:
+        return ret
+
+    v = await word2vec(query)
+    if v is None:
+        return ret
+
+    async with POOL.acquire() as conn:
+        rows = await conn.fetch(
+            (
+                "SELECT name, scope, url, -(vec <#> $2::halfvec) as similarity FROM picdata "
+                "WHERE (scope && ARRAY[$1, 'globe']::text[]) "
+                "AND vec IS NOT NULL AND NOT (url = ANY($3::text[])) "
+                "ORDER BY similarity DESC LIMIT $4;"
+            ),
+            scope,
+            str(v.tolist()),
+            [p.url for p, _ in ret],
+            limit - len(ret),
+        )
+    ret.extend(
+        (PicData(name=r["name"], scope=r["scope"], url=r["url"]), r["similarity"])
+        for r in rows
+    )
+    return ret
+
+
 async def listpic(
     reg: str, scope: str = "globe", pages: int = 0
 ) -> list[tuple[str, bool]]:

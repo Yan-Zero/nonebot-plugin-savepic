@@ -14,19 +14,8 @@ from .core.utils import img2vec, upload_image
 from .core.error import NoPictureException
 from .core.error import SameNameException
 
-# INVALID_FILENAME_CHARACTERS = r''
 s_mvpic = on_command("mvpic", priority=5)
 update_vec = on_command("pic.vec.update", permission=SUPERUSER, priority=1, block=True)
-
-
-# mvpic -l name -g name
-# mvpic -lg name name
-# mvpic -gl name name
-# mvpic -l -g name
-# mvpic -g -l name
-# mvpic -gl name
-# mvpic -lg name
-# mvpic name name
 
 
 @s_mvpic.handle()
@@ -46,7 +35,7 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
 
     for token in tokens:
         if token.startswith("-") and all(c in "lg" for c in token[1:]):
-            options.extend(list(token[1:]))
+            options.extend(token[1:])
         else:
             name.append(token)
 
@@ -61,9 +50,6 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
 
     sname = name[0]
     dname = name[1] if len(name) > 1 else sname
-    # for c in INVALID_FILENAME_CHARACTERS:
-    #     sname = sname.replace(c, "-")
-    #     dname = dname.replace(c, "-")
     if not sname.endswith((".jpg", ".png", ".gif")):
         sname += ".jpg"
     if not dname.endswith((".jpg", ".png", ".gif")):
@@ -79,11 +65,7 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not (
         await PIC_ADMIN(bot, event)
         or await GROUP_ADMIN(bot, event)
-        or await check_uploader(
-            sname,
-            sg,
-            user,
-        )
+        or await check_uploader(sname, sg, user)
     ):
         await s_mvpic.finish("没有权限")
 
@@ -92,11 +74,11 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
 
     v = None
     if sname != dname:
-        url = await select_pic(sname, sg, True)
-        if not url:
+        if not (url := await select_pic(sname, sg, True)):
             await s_mvpic.finish(f"{sname} 没有找到哦")
-        url = await upload_image(url if url.startswith("http") else Path(url))
-        if not url:
+        if not (
+            url := await upload_image(url if url.startswith("http") else Path(url))
+        ):
             await s_mvpic.finish("图片上传失败，无法获取特征向量")
         v = await img2vec(url, dname)
 

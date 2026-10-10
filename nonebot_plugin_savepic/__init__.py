@@ -43,7 +43,8 @@ spic = on_alconna(
         "savepic",
         Option("-g", help_text="全局"),
         Option("-ac", help_text="允许相似碰撞"),
-        Args["filename", str]["picture?", Image],
+        Args["filename", str],
+        Args["picture?", Image],
         meta=CommandMeta(description="保存图片，默认保存到本群"),
     ),
     use_cmd_start=True,
@@ -82,8 +83,7 @@ async def _(
     filename = command.filename
     if not isinstance(filename, str):
         await spic.finish("文件名无效")
-    # for c in INVALID_FILENAME_CHARACTERS:
-    #     filename = filename.replace(c, "-")
+
     if not filename.endswith((".jpg", ".png", ".gif")):
         filename += ".jpg"
 

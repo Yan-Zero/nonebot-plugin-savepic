@@ -352,7 +352,7 @@ wheels = [
 
 [[package]]
 name = "nonebot-plugin-savepic"
-version = "0.5.11"
+version = "0.6.7"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
