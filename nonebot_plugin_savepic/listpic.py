@@ -1,17 +1,14 @@
 from nonebot import on_command
-from datetime import datetime, timedelta
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
 from nonebot.params import CommandArg
-from nonebot_plugin_alconna import on_alconna
+from nonebot.adapters import Message
+from nonebot_plugin_alconna import on_alconna, UniMessage, Reference, CustomNode
 from nonebot.internal.adapter import Bot
-from nonebot.adapters.onebot.v11 import GROUP_ADMIN
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
-from nonebot.adapters.onebot.v11.message import Message as V11Msg
-from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
 
 from .rule import PIC_ADMIN
-from .mvpic import logger
+from .adapter import GROUP_ADMIN, GroupMessageEvent
+from .adapter import get_scope, get_user_key
+from .adapter import rkey, RKEY  # noqa: F401 兼容旧的导入路径
 from .config import plugin_config
 from .core.sql import listpic, delete, check_uploader
 
@@ -29,43 +26,10 @@ rmpic = on_alconna(
     use_cmd_start=True,
 )
 s_listpic = on_command("listpic", priority=5)
-RKEY: dict[str, tuple[datetime, str]] = {
-    "group": (datetime.min, ""),
-    "private": (datetime.min, ""),
-}
-
-
-async def rkey(bot: Bot, url: str) -> str:
-    if not url.startswith(
-        (
-            "https://multimedia.nt.qq.com.cn",
-            "http://multimedia.nt.qq.com.cn",
-        )
-    ):
-        return url
-    if RKEY.get("group", (datetime.min, ""))[0] < datetime.now():
-        ret = await bot.call_api("get_rkey")
-        if isinstance(ret, dict):
-            ret = ret.get("rkeys", [])
-        elif isinstance(ret, list):
-            pass
-        else:
-            logger.warning(f"get_rkey 返回了奇怪的东西: {ret}")
-            ret = []
-        for item in ret:
-            RKEY[item.get("type")] = (
-                datetime.fromtimestamp(int(item.get("created_at", 0)))
-                + timedelta(seconds=int(item.get("ttl", 0)) - 300),
-                item.get("rkey", "")[6:],
-            )
-    parsed = urlparse(url)
-    params = parse_qs(parsed.query)
-    params["rkey"] = [RKEY.get("group", (None, ""))[1]]
-    return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
 
 
 @s_listpic.handle()
-async def _(bot: Bot, event, args: V11Msg = CommandArg()):
+async def _(bot: Bot, event, args: Message = CommandArg()):
     reg = args.extract_plain_text().strip().rsplit("\\page", maxsplit=1)
     try:
         if len(reg) > 1:
@@ -76,9 +40,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
     except Exception as ex:
         await s_listpic.finish(f"出错了。{ex}")
 
-    group_id = "globe"
-    if isinstance(event, V11GME):
-        group_id = f"qq_group:{event.group_id}"
+    group_id = get_scope(event)
 
     try:
         pics = await listpic(reg, group_id, pages=pages)
@@ -88,35 +50,20 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
 
         cpp = max(plugin_config.count_per_page_in_list, 1)
         if plugin_config.forward_when_listpic:
-            message = []
+            nodes = []
             for i in range(len(pics) // cpp + 1):
                 if pics[i * cpp : (i + 1) * cpp]:
-                    message.append(
-                        {
-                            "type": "node",
-                            "data": {
-                                "uin": str(event.get_user_id()),
-                                "name": f"Page {pages+i}",
-                                "content": V11Seg.text(
-                                    "\n".join(pics[i * cpp : (i + 1) * cpp])
-                                    + f"\n\nPage {pages+i}"
-                                ),
-                            },
-                        },
+                    nodes.append(
+                        CustomNode(
+                            uid=str(event.get_user_id()),
+                            name=f"Page {pages+i}",
+                            content="\n".join(pics[i * cpp : (i + 1) * cpp])
+                            + f"\n\nPage {pages+i}",
+                        )
                     )
 
-            if isinstance(event, V11GME):
-                await bot.call_api(
-                    "send_group_forward_msg",
-                    group_id=event.group_id,
-                    messages=message,
-                )
-            else:
-                await s_listpic.send(
-                    V11Seg.forward(
-                        await bot.call_api("send_forward_msg", messages=message)
-                    )
-                )
+            # 合并转发交给 uniseg，由它按适配器选择对应的发送方式
+            await UniMessage(Reference(nodes=nodes)).send()
             return
 
         await s_listpic.send("\n".join(pics[:cpp]))
@@ -125,7 +72,7 @@ async def _(bot: Bot, event, args: V11Msg = CommandArg()):
 
 
 @rmpic.handle()
-async def _(bot: Bot, event: V11GME, command: Arparma):
+async def _(bot: Bot, event: GroupMessageEvent, command: Arparma):
     filename = command.filename
     if not isinstance(filename, str):
         await rmpic.finish("文件名无效")
@@ -134,22 +81,20 @@ async def _(bot: Bot, event: V11GME, command: Arparma):
     if not filename.endswith((".jpg", ".png", ".gif")):
         filename += ".jpg"
 
-    user = (
-        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
-    )
+    user = get_user_key(bot, event)
 
     if not (
         await PIC_ADMIN(bot, event)
         or await GROUP_ADMIN(bot, event)
         or await check_uploader(
             filename,
-            f"qq_group:{event.group_id}",
+            get_scope(event),
             user,
         )
     ):
         await rmpic.finish("没有权限")
 
-    scope = f"qq_group:{event.group_id}"
+    scope = get_scope(event)
     # 如果有 -g 选项
     if command.g:
         if not await PIC_ADMIN(bot, event):

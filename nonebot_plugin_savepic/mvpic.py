@@ -4,11 +4,11 @@ from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent as V11GME
-from nonebot.adapters.onebot.v11.permission import GROUP_ADMIN
+from nonebot.adapters import Bot
 
 from .rule import PIC_ADMIN
+from .adapter import GROUP_ADMIN, GroupMessageEvent
+from .adapter import get_scope, get_user_key
 from .core.sql import rename, select_pic, check_uploader
 from .core.utils import img2vec, upload_image
 from .core.error import NoPictureException
@@ -19,7 +19,7 @@ update_vec = on_command("pic.vec.update", permission=SUPERUSER, priority=1, bloc
 
 
 @s_mvpic.handle()
-async def _(bot: Bot, event: V11GME, args=CommandArg()):
+async def _(bot: Bot, event: GroupMessageEvent, args=CommandArg()):
     cmd = args.extract_plain_text().strip()
     name = []
     options = []
@@ -44,9 +44,7 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not options:
         options = ["l"]
 
-    user = (
-        f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}"
-    )
+    user = get_user_key(bot, event)
 
     sname = name[0]
     dname = name[1] if len(name) > 1 else sname
@@ -55,9 +53,9 @@ async def _(bot: Bot, event: V11GME, args=CommandArg()):
     if not dname.endswith((".jpg", ".png", ".gif")):
         dname += ".jpg"
 
-    sg = "globe" if options[0] == "g" else f"qq_group:{event.group_id}"
+    sg = "globe" if options[0] == "g" else get_scope(event)
     dg = options[1] if len(options) > 1 else options[0]
-    dg = "globe" if dg == "g" else f"qq_group:{event.group_id}"
+    dg = "globe" if dg == "g" else get_scope(event)
 
     if not (await PIC_ADMIN(bot, event)) and "g" in options:
         await s_mvpic.finish("不能改全局名称哦~\n尝试使用 -l 选项")

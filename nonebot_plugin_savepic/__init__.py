@@ -1,19 +1,18 @@
 from nonebot import on_command
 from nonebot.params import CommandArg, Arg
-from nonebot.adapters.onebot.v11.message import Message as V11Msg
-from nonebot.adapters.onebot.v11.message import MessageSegment as V11Seg
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent
+from nonebot.adapters import Message
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 from arclet.alconna import Alconna, Args, Option, CommandMeta, Arparma
-from nonebot_plugin_alconna import on_alconna, Image
+from nonebot_plugin_alconna import on_alconna, Image, UniMessage, Text
 from nonebot.internal.adapter import Bot
 
 from .fun import cipr  # noqa: F401
 from .rule import PIC_ADMIN
 from .config import Config, plugin_config
-from .listpic import rkey
+from .adapter import GroupMessageEvent
+from .adapter import get_scope, get_user_key, picture_url
 from .command import url_to_image
 from .core.sql import savepic, regexp_pic
 from .core.utils import img2vec
@@ -34,7 +33,7 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
     homepage="https://github.com/Yan-Zero/nonebot-plugin-savepic",
     type="application",
-    supported_adapters=set(["~onebot.v11"]),
+    supported_adapters=set(["~onebot.v11", "~milky"]),
 )
 
 repic = on_command("repic", priority=5)
@@ -53,17 +52,13 @@ spic = on_alconna(
 
 
 @repic.handle()
-async def _(bot: Bot, event, args: V11Msg = CommandArg()):
+async def _(bot: Bot, event, args: Message = CommandArg()):
     reg = args.extract_plain_text().strip()
-    group_id = (
-        "globe"
-        if not isinstance(event, GroupMessageEvent)
-        else f"qq_group:{event.group_id}"
-    )
+    group_id = get_scope(event)
     try:
         if pic := await regexp_pic(reg, group_id):
-            await bot.send(
-                event, V11Msg([V11Seg.text(pic.name), await url_to_image(pic.url)])
+            await UniMessage([Text(pic.name), await url_to_image(pic.url)]).send(
+                event, bot
             )
     except Exception as ex:
         await repic.finish(f"出错了。{ex}")
@@ -90,7 +85,7 @@ async def _(
     state["savepiv_group"] = (
         "globe"
         if command.g and await PIC_ADMIN(bot, event)
-        else f"qq_group:{event.group_id}"
+        else get_scope(event)
     )
 
     if command.g and not await PIC_ADMIN(bot, event):
@@ -107,20 +102,13 @@ async def _(
 
 
 @spic.got("picture", "图呢？")
-async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
+async def _(bot: Bot, state: T_State, event, picture: Message = Arg()):
     picture = picture.get("image")
     if not picture:
         await spic.finish("6，这也不是图啊")
 
     try:
-        url = await rkey(
-            bot,
-            (
-                picture[0].data["url"]
-                if "url" in picture[0].data
-                else picture[0].data["file"]
-            ),
-        )
+        url = await picture_url(bot, picture[0])
         dir = await write_pic(url, plugin_config.savepic_dir)
     except Exception as ex:
         await spic.finish("存图失败。" + "\n" + str(ex))
@@ -130,7 +118,7 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
             filename=state["savepiv_filename"],
             url=dir,
             scope=state["savepiv_group"],
-            uploader=f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{event.get_user_id()}",
+            uploader=get_user_key(bot, event),
             vec=await img2vec(url, state["savepiv_filename"]),
             collision_allow=state["savepiv_ac"],
         )
@@ -139,28 +127,24 @@ async def _(bot: Bot, state: T_State, event, picture: V11Msg = Arg()):
         await spic.finish("文件名重复")
     except SimilarPictureException as ex:
         if ex.similarity >= 0.999:
-            await spic.finish(
-                V11Msg(
-                    [
-                        V11Seg.text("这图存过了，无法再保存" + "\n\n" + ex.name + "\n"),
-                        await url_to_image(ex.url),
-                    ]
-                )
-            )
-        await del_pic(dir)
-        await spic.finish(
-            V11Msg(
+            await UniMessage(
                 [
-                    V11Seg.text(
-                        "存在相似图片"
-                        + "\n\n"
-                        + ex.name
-                        + f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n"
-                    ),
+                    Text("这图存过了，无法再保存" + "\n\n" + ex.name + "\n"),
                     await url_to_image(ex.url),
                 ]
-            )
-        )
+            ).finish()
+        await del_pic(dir)
+        await UniMessage(
+            [
+                Text(
+                    "存在相似图片"
+                    + "\n\n"
+                    + ex.name
+                    + f"\n(相似度：{'%.4g' % (min(ex.similarity * 100, 100.0))}%)\n"
+                ),
+                await url_to_image(ex.url),
+            ]
+        ).finish()
     except Exception as ex:
         await del_pic(dir)
         await spic.finish(f"出错了。{ex}")

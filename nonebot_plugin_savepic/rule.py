@@ -6,6 +6,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.internal.permission import Permission
 
 from .config import plugin_config
+from .adapter import get_platform
 
 
 class Savepic_Admin(Permission):
@@ -21,9 +22,11 @@ class Savepic_Admin(Permission):
             user_id = event.get_user_id()
         except Exception:
             return False
+        name = bot.adapter.get_name().split(maxsplit=1)[0].lower()
         return (
-            f"{bot.adapter.get_name().split(maxsplit=1)[0].lower()}:{user_id}"
-            in plugin_config.savepic_admin
+            f"{get_platform(bot)}:{user_id}" in plugin_config.savepic_admin
+            # Milky 统一记为 onebot，但写 milky:<QQ号> 也认
+            or f"{name}:{user_id}" in plugin_config.savepic_admin
             or user_id in plugin_config.savepic_admin  # 兼容旧配置
         )
 
