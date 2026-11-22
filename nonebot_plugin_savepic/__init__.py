@@ -9,6 +9,8 @@ from nonebot_plugin_alconna import on_alconna, Image, UniMessage, Text
 from nonebot.internal.adapter import Bot
 
 from .fun import cipr  # noqa: F401
+from . import listpic as _listpic  # noqa: F401
+from . import mvpic as _mvpic  # noqa: F401
 from .rule import PIC_ADMIN
 from .config import Config, plugin_config
 from .adapter import GroupMessageEvent
